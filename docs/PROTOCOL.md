@@ -84,7 +84,7 @@ Common libraries are swapped for pinned copies we host: three, phaser, pixi.js, 
 | Field | Rule |
 |---|---|
 | `schema` | `1` |
-| `slug` | 3 to 32 characters: `a-z`, `0-9` and `-`. It starts with a letter and is fixed after the first merge. Unique. |
+| `slug` | 3 to 32 characters: `a-z`, `0-9` and `-`. It starts with a letter, does not end with `-`, and has no `--` (preview hosts use `--`). Fixed after the first merge. Unique. |
 | `title` | 1 to 40 characters |
 | `pitch` | 1 to 120 characters |
 | `owner` | The owner's wallet address. Set by DegenHive and changed only by DegenHive. |
