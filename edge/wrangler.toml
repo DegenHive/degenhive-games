@@ -1,0 +1,48 @@
+# games-edge: serves https://<slug>.<GAME_DOMAIN>/ and https://<prefix>--<slug>.<PREVIEW_DOMAIN>/.
+# Routing and headers live in src/core.mjs (shared with tools/edge-dev).
+#
+# Not deployed yet: the domains and the Cloudflare account are placeholders.
+#   Local run:  cd edge && npx wrangler@4.146.0 dev --env dev
+#               then open http://<slug>.localhost:8787/ (local R2/KV start empty; fill them with
+#               npx wrangler@4.146.0 r2 object put dh-games/<key> --file <path> --local
+#               npx wrangler@4.146.0 kv key put --binding GAMES_KV live:<slug> <hash> --local --env dev)
+#   Deploy:     cd edge && npx wrangler@4.146.0 deploy
+name = "games-edge"
+main = "src/worker.mjs"
+compatibility_date = "2026-09-01"
+workers_dev = true
+
+# Uncomment once the domains are bought and their zones are on Cloudflare (proxied wildcard DNS).
+# routes = [
+#   { pattern = "*.GAME_DOMAIN/*", zone_name = "GAME_DOMAIN" },
+#   { pattern = "*.PREVIEW_DOMAIN/*", zone_name = "PREVIEW_DOMAIN" },
+# ]
+
+[vars]
+GAME_DOMAIN = "GAME_DOMAIN"
+PREVIEW_DOMAIN = "PREVIEW_DOMAIN"
+FRAME_ANCESTORS = "https://degenhive.ai https://www.degenhive.ai"
+
+[[r2_buckets]]
+binding = "GAMES_BUCKET"
+bucket_name = "dh-games"
+
+[[kv_namespaces]]
+binding = "GAMES_KV"
+id = "REPLACE_WITH_GAMES_KV_NAMESPACE_ID"
+
+[env.dev]
+name = "games-edge-dev"
+
+[env.dev.vars]
+GAME_DOMAIN = "localhost"
+PREVIEW_DOMAIN = "localhost"
+FRAME_ANCESTORS = "http://localhost:3000 http://localhost:3300 https://degenhive.ai"
+
+[[env.dev.r2_buckets]]
+binding = "GAMES_BUCKET"
+bucket_name = "dh-games"
+
+[[env.dev.kv_namespaces]]
+binding = "GAMES_KV"
+id = "REPLACE_WITH_GAMES_KV_NAMESPACE_ID"

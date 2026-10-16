@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>DegenHive test host</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0b0d; color: #ddd; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  body { display: flex; }
+  #frame { flex: 1; border: 0; width: 100%; height: 100%; display: block; background: #000; }
+  #log { width: 340px; overflow: auto; padding: 8px; box-sizing: border-box; border-left: 1px solid #333; white-space: pre-wrap; display: none; }
+  body.log #log { display: block; }
+  #log div { border-bottom: 1px solid #1c1c1f; padding: 2px 0; }
+</style>
+</head>
+<body>
+<iframe id="frame" title="game" sandbox="allow-scripts allow-same-origin allow-pointer-lock" allow="autoplay; fullscreen; gamepad"></iframe>
+<div id="log"></div>
+<script>
+// A minimal host for docs/PROTOCOL.md section 5. It frames a game served by edge-dev, does the
+// MessageChannel handshake and answers the SDK with stubs. Everything is recorded in window.__dh
+// so scripts/checks/sandbox.mjs can read it.
+(function () {
+  "use strict";
+  var q = new URLSearchParams(location.search);
+  var slug = (q.get("slug") || "").toLowerCase();
+  var prefix = (q.get("prefix") || "").toLowerCase();
+  if (!/^(?!.*--)[a-z][a-z0-9-]{1,30}[a-z0-9]$/.test(slug) || (prefix && !/^(pr|up)-[a-z0-9-]{1,64}$/.test(prefix))) {
+    document.body.textContent = "Usage: /__host?slug=<slug>[&prefix=pr-<n>][&log=1][&mode=preview|practice|points]";
+    return;
+  }
+  if (q.get("log") === "1") document.body.className = "log";
+  var sub = prefix ? prefix + "--" + slug : slug;
+  var gameOrigin = location.protocol + "//" + sub + ".localhost" + (location.port ? ":" + location.port : "");
+  var mode = q.get("mode") || "preview";
+  var MAX_MSG = 64 * 1024, MAX_RUN_END = 256 * 1024, MAX_SAVE = 60 * 1024, RATE = 20, MAX_DROPS = 50;
+  var enc = new TextEncoder();
+  function bytes(s) { return enc.encode(s).length; }
+
+  var t0 = performance.now();
+  var rec = (window.__dh = {
+    slug: slug,
+    gameOrigin: gameOrigin,
+    hellos: 0,
+    ack: null,
+    readyAt: null,
+    events: [],
+    requests: [],
+    runs: {},
+    runOrder: [],
+    errors: [],
+    links: [],
+    drops: [],
+    closed: false,
+    save: null,
+    best: null,
+  });
+  function t() { return Math.round(performance.now() - t0); }
+  var logEl = document.getElementById("log");
+  function log(s) {
+    if (document.body.className !== "log") return;
+    var d = document.createElement("div");
+    d.textContent = t() + "ms " + s;
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  var session = {
+    mode: mode,
+    player: { name: "Reviewer", avatar: null, signedIn: false },
+    lab: null,
+    muted: false,
+    locale: "en",
+  };
+  var port = null;
+  var sentTimes = [];
+  var seq = 0;
+
+  function drop(reason, d) {
+    rec.drops.push({ t: t(), reason: reason, type: d && typeof d.type === "string" ? d.type.slice(0, 40) : null });
+    log("DROP " + reason);
+    if (rec.drops.length >= MAX_DROPS && !rec.closed) {
+      rec.closed = true;
+      log("closing the game: too many dropped messages");
+      frame.src = "about:blank";
+    }
+  }
+
+  function reply(p, id, payload) { p.postMessage({ v: 1, re: id, ok: true, payload: payload || {} }); }
+  function fail(p, id, code, message) { p.postMessage({ v: 1, re: id, ok: false, error: { code: code, message: message } }); }
+
+  function onRequest(p, d) {
+    var pl = d.payload && typeof d.payload === "object" ? d.payload : {};
+    rec.requests.push({ t: t(), type: d.type });
+    switch (d.type) {
+      case "session.get":
+        return reply(p, d.id, session);
+      case "run.start": {
+        var runId = "run-" + (++seq);
+        var seed = (Math.random() * 4294967296) >>> 0;
+        rec.runs[runId] = { startedAt: t(), seed: seed, ends: 0, score: null, durationMs: null, endedAt: null, log: false };
+        rec.runOrder.push(runId);
+        log("run.start " + runId);
+        return reply(p, d.id, { runId: runId, seed: seed });
+      }
+      case "run.end": {
+        var r = rec.runs[pl.runId];
+        if (!r) return fail(p, d.id, "run_unknown", "no such run");
+        r.ends++;
+        if (r.ends > 1) { log("run.end again for " + pl.runId); return fail(p, d.id, "run_unknown", "this run has already ended"); }
+        if (!Number.isInteger(pl.score) || pl.score < 0 || pl.score > 1000000) {
+          r.badScore = pl.score;
+          return fail(p, d.id, "bad_request", "score must be a whole number from 0 to 1,000,000");
+        }
+        r.score = pl.score;
+        r.durationMs = typeof pl.durationMs === "number" ? pl.durationMs : null;
+        r.endedAt = t();
+        r.log = typeof pl.log === "string";
+        rec.best = rec.best === null ? pl.score : Math.max(rec.best, pl.score);
+        log("run.end " + pl.runId + " score " + pl.score);
+        return reply(p, d.id, { accepted: true, counted: false, best: rec.best, mode: mode });
+      }
+      case "save.get":
+        return reply(p, d.id, { data: rec.save });
+      case "save.set":
+        if (typeof pl.data !== "string") return fail(p, d.id, "bad_request", "data must be a string");
+        if (bytes(pl.data) > MAX_SAVE) return fail(p, d.id, "too_large", "save data is over 60 KB");
+        rec.save = pl.data;
+        return reply(p, d.id, {});
+      case "link.open":
+        rec.links.push({ t: t(), url: String(pl.url).slice(0, 300) });
+        return reply(p, d.id, { opened: false });
+      default:
+        drop("unknown request " + d.type, d);
+        return fail(p, d.id, "bad_request", "unknown request type");
+    }
+  }
+
+  function onMessage(p, e) {
+    var d = e.data;
+    if (rec.closed) return;
+    var size;
+    // Size is the UTF-8 byte length of the JSON message (PROTOCOL.md 5.2).
+    try { size = bytes(JSON.stringify(d)); } catch (err) { return drop("not serializable", null); }
+    var limit = d && d.type === "run.end" && d.payload && d.payload.log !== undefined ? MAX_RUN_END : MAX_MSG;
+    if (size > limit) return drop("too large", d);
+    var now = performance.now();
+    while (sentTimes.length && now - sentTimes[0] > 1000) sentTimes.shift();
+    sentTimes.push(now);
+    if (sentTimes.length > RATE) return drop("rate", d);
+    if (!d || d.v !== 1 || typeof d.type !== "string") return drop("bad envelope", d);
+
+    if (d.type === "hello.ack") {
+      if (!rec.ack) { rec.ack = { t: t(), sdk: String(d.sdk).slice(0, 40) }; port = p; log("hello.ack sdk " + rec.ack.sdk); }
+      return;
+    }
+    if (p !== port) return drop("message on a stale port", d);
+    if (typeof d.id === "string") return onRequest(p, d);
+
+    var pl = d.payload && typeof d.payload === "object" ? d.payload : {};
+    var ev = { t: t(), type: d.type };
+    if (d.type === "track") ev.name = String(pl.name).slice(0, 40);
+    if (d.type === "heartbeat") ev.fps = typeof pl.fps === "number" ? pl.fps : null;
+    if (d.type === "error") { ev.message = String(pl.message).slice(0, 300); rec.errors.push(ev); }
+    if (rec.events.length < 1000) rec.events.push(ev);
+    if (d.type === "ready" && rec.readyAt === null) rec.readyAt = t();
+    log(d.type + (ev.message ? " " + ev.message : ""));
+  }
+
+  function hello() {
+    if (rec.ack || rec.closed || !frame.contentWindow) return;
+    var ch = new MessageChannel();
+    ch.port1.onmessage = function (e) { onMessage(ch.port1, e); };
+    frame.contentWindow.postMessage({ dh: "hello", v: 1, origin: location.origin }, gameOrigin, [ch.port2]);
+    rec.hellos++;
+  }
+
+  /** Lets a test send host events (pause, resume, mute, session.changed, session.ending). */
+  window.__dhSend = function (type, payload) {
+    if (port) port.postMessage({ v: 1, type: type, payload: payload || {} });
+    return !!port;
+  };
+
+  var frame = document.getElementById("frame");
+  frame.addEventListener("load", function () {
+    if (rec.loadedAt === undefined) rec.loadedAt = t();
+    // The SDK listens from load and waits 1,500 ms. Say hello now and a few more times in case
+    // the first message raced the SDK; the SDK takes the first and ignores the rest.
+    hello();
+    var n = 0;
+    var iv = setInterval(function () { if (rec.ack || ++n > 5) return clearInterval(iv); hello(); }, 200);
+  });
+  frame.src = gameOrigin + "/";
+  log("framing " + gameOrigin);
+})();
+</script>
+</body>
+</html>
