@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DegenHive/degenhive-games/blob/main/schemas/checks.schema.json",
+  "title": "checks.json",
+  "description": "Output of scripts/checks/run.mjs. status and items match Build.checks in plans/games/API.md section 5.",
+  "type": "object",
+  "required": ["version", "slug", "status", "items"],
+  "properties": {
+    "version": { "const": 1 },
+    "slug": { "type": "string" },
+    "kind": { "enum": ["new", "update", null] },
+    "textOnly": { "type": "boolean" },
+    "needsHuman": { "type": "array", "items": { "type": "string" } },
+    "buildHash": { "type": ["string", "null"] },
+    "base": { "type": ["string", "null"] },
+    "status": { "enum": ["pass", "fail"] },
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "label", "status"],
+        "properties": {
+          "key": { "type": "string" },
+          "label": { "type": "string" },
+          "status": { "enum": ["pending", "running", "pass", "warn", "fail"] },
+          "detail": { "type": "string" },
+          "fixPrompt": { "type": "string" }
+        }
+      }
+    },
+    "sandbox": { "type": ["object", "null"] },
+    "screenshots": { "type": "array", "items": { "type": "string" } },
+    "generatedAt": { "type": "string" }
+  }
+}

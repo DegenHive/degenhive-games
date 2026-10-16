@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DegenHive/degenhive-games/blob/main/schemas/verdict.schema.json",
+  "title": "verdict.json",
+  "description": "The agent review result. Build.verdict in plans/games/API.md section 5.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "issues"],
+  "properties": {
+    "verdict": { "enum": ["approve", "changes", "flag"] },
+    "summary": { "type": "string" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["lens", "severity", "plain"],
+        "properties": {
+          "lens": { "enum": ["security", "content", "scoring", "quality"] },
+          "severity": { "enum": ["info", "minor", "major", "blocker"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "plain": { "type": "string", "minLength": 1 },
+          "fixPrompt": { "type": "string" }
+        }
+      }
+    },
+    "model": { "type": "string" },
+    "reviewedAt": { "type": "string" }
+  }
+}

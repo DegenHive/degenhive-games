@@ -1,0 +1,805 @@
+{
+  "version": 1,
+  "about": "Code rules from docs/PROTOCOL.md section 2.4 as data. files: code = html htm js mjs; text = every text file plus game.json. severity: fail refuses the build, warn is shown to the reviewers. unlessBackends: the rule becomes a warning when game.json declares backends. minHits: the rule fires only from that many matches in one file. Files whose sha256 is in libraries are not checked.",
+  "rules": [
+    {
+      "id": "wallet-ethereum",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:window|globalThis|self|top|parent|frames)\\s*(?:\\?\\.|\\.)\\s*ethereum\\b|\\[\\s*['\"`]ethereum['\"`]\\s*\\]|(?<![\\w$.])ethereum\\s*(?:\\?\\.|\\.)\\s*(?:request|enable|send|sendAsync|on|isMetaMask|selectedAddress|providers|chainId)\\b",
+      "flags": "",
+      "message": "Uses an Ethereum wallet (window.ethereum). A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove every use of window.ethereum and all wallet-connection code from the game. The game must not request accounts, read balances, sign messages or send transactions. For the player's name use DegenHive.session(); for progress use DegenHive.save.get() and DegenHive.save.set()."
+    },
+    {
+      "id": "wallet-solana",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:window|globalThis|self|top|parent)\\s*(?:\\?\\.|\\.)\\s*(?:solana|phantom|solflare|backpack|okxwallet|braveSolana|coinbaseSolana|xnft|glowSolana|trustwallet|bitkeep|keplr|tronWeb)\\b|\\[\\s*['\"`](?:solana|phantom|solflare|backpack)['\"`]\\s*\\]",
+      "flags": "",
+      "message": "Uses a Solana or other wallet provider (window.solana, window.phantom, ...). A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove every use of window.solana, window.phantom and any other injected wallet provider. The game must not connect to a wallet or ask for signatures. Use DegenHive.session() if you need the player's name."
+    },
+    {
+      "id": "wallet-rpc-method",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "['\"`](?:eth_[A-Za-z0-9_]+|wallet_(?:switchEthereumChain|addEthereumChain|watchAsset|requestPermissions|getPermissions|revokePermissions|sendCalls|getCallsStatus|showCallsStatus|getCapabilities|grantPermissions|requestSnaps|invokeSnap)|personal_(?:sign|ecRecover))['\"`]|\\bpersonal_sign\\b",
+      "flags": "",
+      "message": "Names a wallet RPC method (eth_*, wallet_*, personal_sign). A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Delete the wallet RPC calls (eth_requestAccounts, eth_sendTransaction, personal_sign, wallet_switchEthereumChain and similar) and the code around them. Games on DegenHive have no wallet access."
+    },
+    {
+      "id": "wallet-signature",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:signTypedData(?:_v[1-4])?|signMessage|signTransaction|signAllTransactions|signAndSendTransaction|sendTransaction|setApprovalForAll|increaseAllowance)\\s*\\(|['\"`](?:Permit|PermitSingle|PermitBatch|PermitTransferFrom|PermitBatchTransferFrom|PermitWitnessTransferFrom)['\"`]|(?<![\\w$])permit\\s*\\(",
+      "flags": "",
+      "message": "Asks for a signature, a token approval or a permit. A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove the signing, approval and permit code (signTypedData, signMessage, sendTransaction, setApprovalForAll, permit). Nothing in the game may ask the player to sign anything."
+    },
+    {
+      "id": "wallet-permit2",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "0x000000000022d473030f116ddee9f6b43ac78ba3",
+      "flags": "i",
+      "message": "Contains the Permit2 contract address, a common token-drain target. A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove the Permit2 address and any code that builds token approvals or permits."
+    },
+    {
+      "id": "wallet-eip6963",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "eip6963:(?:requestProvider|announceProvider)",
+      "flags": "",
+      "message": "Listens for wallet providers (EIP-6963). A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove the eip6963:requestProvider / eip6963:announceProvider listeners and all wallet discovery code."
+    },
+    {
+      "id": "wallet-library",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:ethers\\s*\\.\\s*(?:providers|BrowserProvider|JsonRpcSigner|Wallet|Contract)|new\\s+Web3\\s*\\(|Web3Modal|createWeb3Modal|createAppKit|WalletConnect|walletconnect|createWalletClient|RainbowKit|ConnectKit|thirdweb)\\b|@solana\\/web3\\.js|@solana\\/wallet-adapter|@reown\\/appkit|@metamask\\/sdk",
+      "flags": "",
+      "message": "Loads a wallet or blockchain library (ethers, web3, wagmi, WalletConnect, @solana/web3.js, ...). A game never touches a wallet. Anything that involves money happens in the DegenHive page around the game.",
+      "fixPrompt": "Remove the wallet or blockchain library and the code that uses it. If the game needs a token-themed mechanic, simulate it inside the game with plain numbers; never connect to a chain or a wallet."
+    },
+    {
+      "id": "outer-parent-top",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:window|self|globalThis)\\s*(?:\\?\\.|\\.)\\s*(?:parent|top|opener|frameElement)\\b|(?<![\\w$.])(?:parent|top|opener)\\s*(?:\\?\\.|\\.)\\s*(?:postMessage|location|document|frames|DegenHive)\\b",
+      "flags": "",
+      "message": "Reaches the page around the game (window.parent, window.top, window.opener). Only the DegenHive SDK talks to the host page.",
+      "fixPrompt": "Remove every use of window.parent, window.top, window.opener and window.frameElement. To talk to DegenHive use only the SDK: DegenHive.ready(), DegenHive.runStart(), DegenHive.runEnd({ score }), DegenHive.save, DegenHive.track() and DegenHive.openLink(url)."
+    },
+    {
+      "id": "outer-window-open",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\bwindow\\s*(?:\\?\\.|\\.)\\s*open\\s*\\(|(?<![\\w$.])open\\s*\\(\\s*['\"`]https?:",
+      "flags": "",
+      "message": "Opens a new window with window.open. The game frame cannot open windows.",
+      "fixPrompt": "Replace window.open(url) with await DegenHive.openLink(url). The host shows the link in a confirm sheet and resolves true when the player opens it."
+    },
+    {
+      "id": "outer-document-domain",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\bdocument\\s*(?:\\?\\.|\\.)\\s*domain\\b",
+      "flags": "",
+      "message": "Reads or sets document.domain, which tries to relax the origin boundary.",
+      "fixPrompt": "Remove every use of document.domain. The game runs on its own origin and must not change it."
+    },
+    {
+      "id": "outer-navigation",
+      "lens": "security",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "<a\\b[^>]*\\btarget\\s*=\\s*[\"']?_(?:top|parent|blank)\\b|\\b(?:top|parent)\\s*\\.\\s*location\\s*(?:\\.href\\s*)?=",
+      "flags": "",
+      "message": "Links that leave the game frame (target=_blank/_top/_parent) are blocked by the sandbox.",
+      "fixPrompt": "Replace links that open outside the game with buttons that call DegenHive.openLink(url)."
+    },
+    {
+      "id": "cookie-domain",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\bdocument\\s*\\.\\s*cookie\\s*=[^\\n]*;\\s*domain\\s*=",
+      "flags": "i",
+      "message": "Sets a cookie for a wider domain, which other games on the game domain could read.",
+      "fixPrompt": "Do not set cookies with a domain attribute. Use DegenHive.save for anything that must persist, or localStorage for local-only settings."
+    },
+    {
+      "id": "service-worker",
+      "lens": "quality",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "\\bnavigator\\s*\\.\\s*serviceWorker\\s*\\.\\s*register\\s*\\(",
+      "flags": "",
+      "message": "Registers a service worker. The server refuses service-worker scripts, so the call fails.",
+      "fixPrompt": "Remove the service worker registration. The game is served fresh by DegenHive and cannot install a service worker."
+    },
+    {
+      "id": "device-permission",
+      "lens": "quality",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "\\bgetUserMedia\\s*\\(|\\bgetDisplayMedia\\s*\\(|\\bnavigator\\s*\\.\\s*(?:geolocation|usb|serial|hid|bluetooth|credentials)\\b|\\bclipboard\\s*\\.\\s*read(?:Text)?\\s*\\(",
+      "flags": "",
+      "message": "Uses a device API (camera, microphone, location, USB, serial, HID, Bluetooth, clipboard reading, credentials) that the server turns off.",
+      "fixPrompt": "Remove the camera, microphone, location, USB, serial, HID, Bluetooth, clipboard-read and credential calls. The game frame has these permissions turned off and the calls will fail."
+    },
+    {
+      "id": "socket",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\bnew\\s+(?:WebSocket|WebTransport|EventSource)\\s*\\(|\\b(?:io|Pusher|Ably\\.Realtime)\\s*\\(\\s*['\"`](?:wss?|https?):",
+      "flags": "",
+      "message": "Opens a WebSocket, WebTransport or EventSource connection to a server.",
+      "fixPrompt": "Remove the WebSocket / EventSource connection, or declare the server's https:// origin in game.json \"backends\" (a human approves each one). The game may only connect to origins listed there.",
+      "unlessBackends": true
+    },
+    {
+      "id": "webrtc",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:RTCPeerConnection|webkitRTCPeerConnection|mozRTCPeerConnection|RTCDataChannel)\\b|\\bnew\\s+Peer\\s*\\(",
+      "flags": "",
+      "message": "Uses WebRTC (RTCPeerConnection). WebRTC can reach servers that the content policy does not cover.",
+      "fixPrompt": "Remove RTCPeerConnection and any peer-to-peer library, or declare the signalling and relay servers in game.json \"backends\" so a human can approve them.",
+      "unlessBackends": true
+    },
+    {
+      "id": "beacon",
+      "lens": "security",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "\\bnavigator\\s*\\.\\s*sendBeacon\\s*\\(",
+      "flags": "",
+      "message": "Sends data with navigator.sendBeacon.",
+      "fixPrompt": "Remove navigator.sendBeacon. For analytics use DegenHive.track(name, props); loads, sessions and errors are recorded with no call."
+    },
+    {
+      "id": "eval-decoded",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:eval|Function|setTimeout|setInterval|execScript)\\s*\\(\\s*(?:atob|unescape|decodeURIComponent|decodeURI|escape|String\\s*\\.\\s*fromCharCode|new\\s+TextDecoder|[\\w$.]+\\s*\\.\\s*(?:responseText|text\\s*\\(\\s*\\)|result))|\\bnew\\s+Function\\s*\\(\\s*(?:atob|unescape|decodeURIComponent|String\\s*\\.\\s*fromCharCode|[\\w$.]+\\s*\\.\\s*(?:responseText|result))|\\beval\\s*\\(\\s*function\\s*\\(\\s*p\\s*,\\s*a\\s*,\\s*c\\s*,\\s*k\\s*,\\s*e",
+      "flags": "",
+      "message": "Runs code built from a decoded or downloaded string (eval / new Function on atob, fetch results, ...). This is how hidden code is smuggled in.",
+      "fixPrompt": "Remove the eval / new Function call and put the code it runs directly in the source as plain, readable JavaScript."
+    },
+    {
+      "id": "eval-any",
+      "lens": "security",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "(?<![\\w$.])eval\\s*\\(|\\bnew\\s+Function\\s*\\(|\\b(?:setTimeout|setInterval)\\s*\\(\\s*['\"`]",
+      "flags": "",
+      "message": "Uses eval, new Function or a string timer. The content policy blocks these, so the call throws.",
+      "fixPrompt": "Replace eval / new Function / setTimeout(\"code\") with ordinary functions. The game's content policy has no 'unsafe-eval'."
+    },
+    {
+      "id": "blob-script",
+      "lens": "security",
+      "severity": "warn",
+      "files": "code",
+      "pattern": "\\bnew\\s+Blob\\s*\\([\\s\\S]{0,300}?['\"`](?:text|application)\\/(?:java|ecma)script['\"`]|\\bimport\\s*\\(\\s*(?:URL\\s*\\.\\s*createObjectURL|['\"`](?:data|blob):)",
+      "flags": "",
+      "message": "Builds a script from a Blob or data: URL at runtime.",
+      "fixPrompt": "Ship the script as a normal .js file in src/ and load it with a <script src> tag or a static import. Do not assemble code at runtime."
+    },
+    {
+      "id": "obfuscator-names",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b_0x[0-9a-f]{4,6}\\b",
+      "flags": "",
+      "message": "Looks obfuscated (_0x1a2b style names from javascript-obfuscator).",
+      "fixPrompt": "Replace the obfuscated file with the original readable source code. DegenHive refuses obfuscated code so reviewers can read what the game does.",
+      "minHits": 10
+    },
+    {
+      "id": "obfuscator-symbols",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "[\\[\\]()!+]{80,}",
+      "flags": "",
+      "message": "Looks obfuscated (long runs of []()!+ symbols, JSFuck style).",
+      "fixPrompt": "Replace the obfuscated code with the original readable source code."
+    },
+    {
+      "id": "obfuscator-escapes",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "(?:\\\\x[0-9a-fA-F]{2}){40,}|(?:\\\\u[0-9a-fA-F]{4}){40,}",
+      "flags": "",
+      "message": "Hides text in long runs of \\x / \\u escapes.",
+      "fixPrompt": "Write the strings as plain text. If you need binary data, put it in an asset file listed in assets.json."
+    },
+    {
+      "id": "miner",
+      "lens": "security",
+      "severity": "fail",
+      "files": "code",
+      "pattern": "\\b(?:coinhive|coin-hive|cryptoloot|crypto-loot|cryptonight|webminepool|deepminer|minero\\.cc|monerominer|jsecoin|coinimp|xmrig|xmr-stak|minergate)\\b|stratum\\+(?:tcp|ssl):\\/\\/|\\bCoinHive\\s*\\.|\\bClient\\s*\\.\\s*Anonymous\\s*\\(",
+      "flags": "i",
+      "message": "Contains cryptocurrency miner code or a mining pool address.",
+      "fixPrompt": "Remove the miner code completely. Games on DegenHive must not use the player's device to mine."
+    },
+    {
+      "id": "phishing-seed",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "\\b(?:seed|recovery|secret\\s+recovery|mnemonic|backup|wallet)\\s+(?:phrase|words)\\b|\\bmnemonic\\s+(?:seed|code)\\b|\\bprivate\\s+keys?\\b|\\b(?:12|twelve|24|twenty[\\s-]*four)[\\s-]*words?\\b[^.\\n]{0,40}\\b(?:phrase|wallet|recovery|seed)\\b",
+      "flags": "i",
+      "message": "Text mentions a seed phrase, recovery words or a private key. Games must never ask for these.",
+      "fixPrompt": "Remove any text or input that mentions seed phrases, recovery words, mnemonics or private keys. A game never asks for them, not even as a joke or a story element."
+    },
+    {
+      "id": "phishing-signature",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "\\b(?:connect|link|verify|sync|validate|import|restore)\\s+(?:your\\s+)?(?:wallet|metamask|phantom)\\b|\\bsign\\s+(?:the\\s+|this\\s+)?(?:message|transaction)\\b|\\bwallet\\s+signature\\b|\\bapprove\\s+(?:the\\s+)?(?:transaction|spending|allowance|token)\\b",
+      "flags": "i",
+      "message": "Text asks the player to connect a wallet, sign a message or approve a transaction.",
+      "fixPrompt": "Remove the wallet, signing and approval wording and any fake connect or claim screens. Games never involve a wallet; DegenHive handles passes and rewards outside the game."
+    },
+    {
+      "id": "phishing-claim",
+      "lens": "content",
+      "severity": "warn",
+      "files": "text",
+      "pattern": "\\bclaim\\s+(?:your\\s+)?(?:airdrop|tokens?|nfts?|crypto|usdc|eth|sol)\\b|\\bfree\\s+(?:airdrop|tokens|crypto)\\b",
+      "flags": "i",
+      "message": "Text offers an airdrop or token claim. That looks like a scam screen.",
+      "fixPrompt": "Remove the airdrop / token-claim wording. Rewards on DegenHive come from Labs and are shown by the DegenHive page, never by the game."
+    },
+    {
+      "id": "ai-ignore-instructions",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "\\b(?:ignore|disregard|forget|override|bypass)\\s+(?:(?:all|any|the|your|previous|prior|above|earlier|preceding|these|those|other)\\s+){0,3}(?:instructions?|prompts?|rules|guidelines|directions|system\\s+messages?)\\b",
+      "flags": "i",
+      "message": "Holds text that tells an AI to ignore its instructions (prompt injection).",
+      "fixPrompt": "Delete the text that addresses AI models or reviewers. Game code and text must be about the game; it must not try to instruct the review."
+    },
+    {
+      "id": "ai-addressed",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "\\b(?:AI|LLM|automated|agent|bot|model|claude|gpt|chatgpt|gemini|copilot)[\\s-]+review(?:er|ers|ing)?\\b|\\breview(?:er|ing)?[\\s-]+(?:agent|bot|model|AI|LLM)\\b|\\b(?:dear|attention|note\\s+(?:to|for)|message\\s+(?:to|for)|instructions?\\s+(?:to|for))\\s*,?\\s+(?:the\\s+|any\\s+)?(?:AI|LLM|reviewer|review\\s+agent|claude|gpt|chatgpt|assistant|language\\s+model)s?\\b",
+      "flags": "i",
+      "message": "Holds text addressed to an AI reviewer.",
+      "fixPrompt": "Delete the comments or strings that talk to AI reviewers or language models. Reviews read the code as data; text aimed at the reviewer is treated as an attack."
+    },
+    {
+      "id": "ai-approval-claim",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "\\b(?:mark|flag|rate|classify|treat|consider|report)\\s+(?:this|the)\\s+(?:game|code|build|file|submission|pr|pull\\s+request)\\s+as\\s+(?:safe|approved|clean|benign|harmless|passing|passed)\\b|\\b(?:this|the)\\s+(?:game|code|build|file|submission)\\s+(?:is|has\\s+been)\\s+(?:already\\s+)?(?:approved|verified\\s+safe|whitelisted|allowlisted|pre-?approved)\\b|\\b(?:approve|approving)\\s+(?:this|the)\\s+(?:game|build|submission|pr|pull\\s+request)\\b|\\bverdict\\s*[\"']?\\s*[:=]\\s*[\"']?(?:approve|approved|pass|safe)\\b",
+      "flags": "i",
+      "message": "Holds text that claims the build is approved or asks for approval.",
+      "fixPrompt": "Delete the text that claims the game is safe or approved, or that asks for approval. Only the review decides that."
+    },
+    {
+      "id": "ai-prompt-tokens",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "<\\/?\\s*(?:system|instructions?|assistant|human|user_?prompt|admin_?prompt)\\s*>|\\[\\s*\\/?\\s*(?:INST|SYS|SYSTEM)\\s*\\]|<\\|(?:im_start|im_end|system|endoftext|eot_id|start_header_id)\\|>|\\bsystem\\s+prompt\\b",
+      "flags": "i",
+      "message": "Holds chat-prompt markup (<system>, [INST], <|im_start|>, \"system prompt\") aimed at a language model.",
+      "fixPrompt": "Delete the prompt markup. It has no use in a game and is treated as prompt injection."
+    },
+    {
+      "id": "ai-role",
+      "lens": "security",
+      "severity": "warn",
+      "files": "text",
+      "pattern": "\\byou\\s+are\\s+(?:now\\s+)?(?:an?\\s+)?(?:AI\\s+(?:assistant|model|reviewer)|assistant|language\\s+model|LLM|code\\s+reviewer)\\b|\\bas\\s+an\\s+(?:AI\\s+(?:assistant|model|language\\s+model)|LLM|language\\s+model)\\b",
+      "flags": "i",
+      "message": "Holds text that speaks to an AI model about its role.",
+      "fixPrompt": "If this is story text in the game, reword it so it does not address an AI model; otherwise delete it."
+    },
+    {
+      "id": "hidden-unicode",
+      "lens": "security",
+      "severity": "fail",
+      "files": "text",
+      "pattern": "[\\u{E0000}-\\u{E007F}‪-‮⁦-⁩]",
+      "flags": "u",
+      "message": "Holds invisible tag characters or text-direction overrides that can hide code or instructions from a human reader.",
+      "fixPrompt": "Remove the invisible Unicode tag characters (U+E0000 to U+E007F) and the bidirectional override characters (U+202A to U+202E, U+2066 to U+2069). Write all text as plain visible characters."
+    },
+    {
+      "id": "zero-width",
+      "lens": "security",
+      "severity": "warn",
+      "files": "text",
+      "pattern": "[​‌‎‏⁠-⁤᠎]|(?<!^)﻿",
+      "flags": "u",
+      "message": "Holds zero-width characters that a human reviewer cannot see.",
+      "fixPrompt": "Remove the zero-width characters (U+200B, U+200C, U+200E, U+200F, U+2060 to U+2064, U+FEFF inside the file)."
+    }
+  ],
+  "minified": {
+    "about": "A file of the game's own code counts as minified when it is at least minBytes long, most of its bytes are in lines longer than longLine, it has little whitespace, and those long lines look like code (parentheses and semicolons) rather than data. Runs matching ignoreRuns (base64 and similar data) are removed first.",
+    "minBytes": 4000,
+    "longLine": 500,
+    "longLineShare": 0.5,
+    "maxWhitespaceRatio": 0.12,
+    "minCodeDensity": 0.02,
+    "ignoreRuns": "[A-Za-z0-9+/=_-]{200,}"
+  },
+  "external": {
+    "about": "Resources loaded from outside the build. Scripts from cdnHosts are allowed for the libraries in libraryNames (PROTOCOL.md 2.5); anything else is refused, and the content policy blocks it at run time.",
+    "cdnHosts": [
+      "cdnjs.cloudflare.com",
+      "cdn.jsdelivr.net",
+      "unpkg.com"
+    ],
+    "libraryNames": [
+      "three",
+      "three.js",
+      "phaser",
+      "pixi.js",
+      "pixi",
+      "howler",
+      "matter-js",
+      "tone"
+    ]
+  },
+  "libraries": [
+    {
+      "name": "howler",
+      "version": "2.2.4",
+      "file": "dist/howler.core.min.js",
+      "bytes": 26924,
+      "sha256": "e7b836445d8c44bddc99b7678fa336a9d5c5ede27cc709c5fae8b1748ba7431b"
+    },
+    {
+      "name": "howler",
+      "version": "2.2.4",
+      "file": "dist/howler.js",
+      "bytes": 107970,
+      "sha256": "81343a465947066ec1cd91a1ab88fe83591234159f4f55bcdf44073822c0bd9e"
+    },
+    {
+      "name": "howler",
+      "version": "2.2.4",
+      "file": "dist/howler.min.js",
+      "bytes": 36173,
+      "sha256": "736c339444c88baad593e24afdf1d6e8f574019b4e37a110ecb453ff745ffd41"
+    },
+    {
+      "name": "howler",
+      "version": "2.2.4",
+      "file": "dist/howler.spatial.min.js",
+      "bytes": 9347,
+      "sha256": "fb3b1f662bf2b713cb371b4a7b759ce81ba0ced620093fa5bef0a1a5db4433cb"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.19.0",
+      "file": "build/matter.dev.js",
+      "bytes": 357792,
+      "sha256": "5ae60e5d4e67bdccad25bf97635ad0d2b2a38f8406ba01b1fcef259ebadf6772"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.19.0",
+      "file": "build/matter.dev.min.js",
+      "bytes": 80868,
+      "sha256": "0274239bf5c22feb2021d21befbda9f814a1eb6cb70831e4d1e9a25591854432"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.19.0",
+      "file": "build/matter.js",
+      "bytes": 357731,
+      "sha256": "24dc9496179238a53e6c8f72509d4ba1f67f041a98c48c302336b5bfaf54ce06"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.19.0",
+      "file": "build/matter.min.js",
+      "bytes": 80807,
+      "sha256": "bdf68e297d6c4ec85b8dd693b8781d99db0090449c9a3ba69948eede08c9275a"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.20.0",
+      "file": "build/matter.js",
+      "bytes": 374389,
+      "sha256": "016f108075a42e8bb8f75c43cf5b6d9f07b1d88857975ed9d96b0ede921416ce"
+    },
+    {
+      "name": "matter-js",
+      "version": "0.20.0",
+      "file": "build/matter.min.js",
+      "bytes": 83476,
+      "sha256": "72d30be0f579eb02ce1e0b6f9d359a4f392e6837e5a26ba8be5dbee7f88e24ae"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser-arcade-physics.js",
+      "bytes": 6813422,
+      "sha256": "6ac084b919062ba7035ad934e0057f342cb7b2486118640103ec112398b8912b"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser-arcade-physics.min.js",
+      "bytes": 1050469,
+      "sha256": "9469be8cd1bc478173b77341cffaefffc29d0c4af25204b63e67fae036639fe1"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser-ie9.js",
+      "bytes": 7420475,
+      "sha256": "db73afc8c8ed6d98ca5905cc2ee12525f457a041eeda868e25f316ddb9e2465e"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser-ie9.min.js",
+      "bytes": 1163941,
+      "sha256": "2706a9c49daf574afa243c14ed4958e1e8ce805ef783af24032425b59ccd4b7a"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser.esm.js",
+      "bytes": 7414502,
+      "sha256": "b63c5382c65cd924be9253a5382394427a4fad691c49598ee23fcfa0c6c654a0"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser.esm.min.js",
+      "bytes": 1159779,
+      "sha256": "0c778d5a619dd67b2550749d02cb8d960717a7760575985c3f2d95e23f94359a"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser.js",
+      "bytes": 7407988,
+      "sha256": "0bdfd2521383672e313e36a94e7edcb053af12c831a8a418ae315fece538bec6"
+    },
+    {
+      "name": "phaser",
+      "version": "3.60.0",
+      "file": "dist/phaser.min.js",
+      "bytes": 1158769,
+      "sha256": "d16aca3f36470e2d1eac3a37ba708261e2a496bfad896f8c0172597df42f3455"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser-arcade-physics.js",
+      "bytes": 7241615,
+      "sha256": "238706bbb08bafd3e712a17940f8091c8db429d504ca2e267b1026b97e840b07"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser-arcade-physics.min.js",
+      "bytes": 1086308,
+      "sha256": "2e1bc84f885ab5c62b11ebb72492bb334159ac5678b664c7cb2942fc979e44e3"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser-ie9.js",
+      "bytes": 7870550,
+      "sha256": "98867a02c9dc5f8fa37356ad7f7881176ed151f64c9d5f70adcd2da414587488"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser-ie9.min.js",
+      "bytes": 1201290,
+      "sha256": "4f5c9bd47179a4dcac81d00583aa0458d919268cbeb215232828c1415f69f50e"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser.esm.js",
+      "bytes": 7864081,
+      "sha256": "cc80f609ce97458052dcb026d9625cf45bbec062c8d596342adaf82894a4d4da"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser.esm.min.js",
+      "bytes": 1197130,
+      "sha256": "9327deb5e2f7d382cd054842f641fd504b9a784a730a2bdb94ea63516790ead1"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser.js",
+      "bytes": 7857688,
+      "sha256": "d6e0eb3b99525f01af5adea38747c311a0a48f8af157e6d1f5aa93159bdd0858"
+    },
+    {
+      "name": "phaser",
+      "version": "3.90.0",
+      "file": "dist/phaser.min.js",
+      "bytes": 1196122,
+      "sha256": "e92ddef111ba42e92d316979c732311757093688ea1810591cb7aa2858eba7a7"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser-arcade-physics.js",
+      "bytes": 8170032,
+      "sha256": "31c3ccd3108f9c9d8e89890dc1e108cc7f39b1abf8069e5665048022de92a9a5"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser-arcade-physics.min.js",
+      "bytes": 1266396,
+      "sha256": "744c12f756dde342f2d9721e7e5b7e6c49f2b15c3a1dc1b09813d183aa9f3626"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser.esm.js",
+      "bytes": 8800542,
+      "sha256": "df50bc49e7856363b625fdf4f2c4e2e577cfc1644690c026c3610c594aff372f"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser.esm.min.js",
+      "bytes": 1377611,
+      "sha256": "f4c5fd140d118c10fa9090641a03c17303bab9bfdc28e0626296777db1bb1bde"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser.js",
+      "bytes": 8793523,
+      "sha256": "eb1bef9b0b35cab1f95e00d14ba728a2b14e6ae1dd9ecfa3b60dc16ca04fa259"
+    },
+    {
+      "name": "phaser",
+      "version": "4.2.1",
+      "file": "dist/phaser.min.js",
+      "bytes": 1375976,
+      "sha256": "66348b1b5141e49b7d5ebbe688cddcb502eab1cb00f21c538686a5b2c5abe4de"
+    },
+    {
+      "name": "pixi.js",
+      "version": "7.4.3",
+      "file": "dist/pixi.js",
+      "bytes": 1097720,
+      "sha256": "8cb8905b9756ca9c8f1da97afcac8d3775cb986162cfa2a430f9ab4ad638ec05"
+    },
+    {
+      "name": "pixi.js",
+      "version": "7.4.3",
+      "file": "dist/pixi.min.js",
+      "bytes": 456150,
+      "sha256": "712a3e1943b062a907d86c5bb56b67c7b32a3f03b3654768b00b7016d30a24c6"
+    },
+    {
+      "name": "pixi.js",
+      "version": "7.4.3",
+      "file": "dist/pixi.min.mjs",
+      "bytes": 455498,
+      "sha256": "a88e4607d95131552fee4cc2857487a354ffe2b4287400503c4b72113f9fcfe5"
+    },
+    {
+      "name": "pixi.js",
+      "version": "7.4.3",
+      "file": "dist/pixi.mjs",
+      "bytes": 1046445,
+      "sha256": "3650b8dd4e7fb99f8af1ddc5a973b50efd4b0e22a24e2f64ea4e95cb38c41df7"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/pixi.js",
+      "bytes": 2467375,
+      "sha256": "27bcdad5c17f86a95832670a27242a250f98b093231538e3c6f66dc20ff5de49"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/pixi.min.js",
+      "bytes": 840663,
+      "sha256": "06d9ef9823e743518793083c296d801e752db128cb1f519fbabe37e1259567ea"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/pixi.min.mjs",
+      "bytes": 841319,
+      "sha256": "66257bc46776898bf8c54daaed402ed8f9ac109379c47b2dfa8aa048544d2953"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/pixi.mjs",
+      "bytes": 2200191,
+      "sha256": "8c7c745f667a9b352574044d6ce8d8e76705a6932c79b6bcb53db34a5e22ea76"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/webworker.js",
+      "bytes": 2534718,
+      "sha256": "1838ea3928843858d007d10756be0d5352d2d4000628924ae0d8d2a7756d6224"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/webworker.min.js",
+      "bytes": 867735,
+      "sha256": "e2508e4a71c20c72dc4ec78a34bd916eb69b1e7e7ab2d9a4d9ed2d729d6eab94"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/webworker.min.mjs",
+      "bytes": 868374,
+      "sha256": "0380fc21425eef323b3ed73835ba5067b98802512ddb3a0f3fd685c40cd88ea6"
+    },
+    {
+      "name": "pixi.js",
+      "version": "8.22.0",
+      "file": "dist/webworker.mjs",
+      "bytes": 2258231,
+      "sha256": "fc67d73585140131c1c7929f6219c71b909e76601c5f89d095124a6e031561d3"
+    },
+    {
+      "name": "three",
+      "version": "0.128.0",
+      "file": "build/three.js",
+      "bytes": 1143038,
+      "sha256": "ffb3e7d06010b75b3ab9ee862085e75073f028986116e454615fdfe69dd66084"
+    },
+    {
+      "name": "three",
+      "version": "0.128.0",
+      "file": "build/three.min.js",
+      "bytes": 603445,
+      "sha256": "9274bbcec8d96168626c732b5d31c775aa8cfb7eaa0599bec0c175908a2c1ce2"
+    },
+    {
+      "name": "three",
+      "version": "0.128.0",
+      "file": "build/three.module.js",
+      "bytes": 1140878,
+      "sha256": "af527c374b56b8688737a42d7fcea7cb8aaeb57a4e3c6da98b4dffd55bcc3514"
+    },
+    {
+      "name": "three",
+      "version": "0.160.0",
+      "file": "build/three.cjs",
+      "bytes": 1283807,
+      "sha256": "b2350ed1fdef4cbb22daffb337187e86f09652198f0d3a35a613d9ebe97b30f6"
+    },
+    {
+      "name": "three",
+      "version": "0.160.0",
+      "file": "build/three.js",
+      "bytes": 1315993,
+      "sha256": "7710f93ba2f67bc9886848e05a244e5414aeb116b04bfa0645053e4a3e96e6f8"
+    },
+    {
+      "name": "three",
+      "version": "0.160.0",
+      "file": "build/three.min.js",
+      "bytes": 669884,
+      "sha256": "170c6789f43217c96b3170f4b42fafe135de7f7cd48497a4218f9757ee1d49fa"
+    },
+    {
+      "name": "three",
+      "version": "0.160.0",
+      "file": "build/three.module.js",
+      "bytes": 1272972,
+      "sha256": "76dea8151bc9352aef3528b4262e249b2604f62543828328db978d060d61a495"
+    },
+    {
+      "name": "three",
+      "version": "0.160.0",
+      "file": "build/three.module.min.js",
+      "bytes": 670681,
+      "sha256": "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.cjs",
+      "bytes": 631,
+      "sha256": "b326d5a8b9639e18e3d8debae1c331eaaf426ec703bf218c5ab72b9d6bfa1e94"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.core.js",
+      "bytes": 1458113,
+      "sha256": "9edde002b066a9a05676a6127f67735b62baf399bdea529f2f7e31657da769e6"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.module.js",
+      "bytes": 662772,
+      "sha256": "9052042d676cb0fdc1ddfefe193053f34b7ac0513a616fdac4535d49987812ea"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.tsl.js",
+      "bytes": 36854,
+      "sha256": "6e6b92d8ce467818944f73815a96abadc6392fb34de577d479a23810b6aeeed0"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.webgpu.js",
+      "bytes": 2284850,
+      "sha256": "15cfce5c653541704fd9a3463c39d3e8b854bb6265ccd854d7cfe74090625cc6"
+    },
+    {
+      "name": "three",
+      "version": "0.186.1",
+      "file": "build/three.webgpu.nodes.js",
+      "bytes": 2276209,
+      "sha256": "58c02e6398af620f8c9edb9022c3555180ded9b904f73995e285529c708d2166"
+    },
+    {
+      "name": "tone",
+      "version": "14.8.49",
+      "file": "build/Tone.js",
+      "bytes": 349169,
+      "sha256": "1261cdd3331d826237e7b0b954b5ed7d2381c8df4331d2018acea8c7a64a9a7b"
+    },
+    {
+      "name": "tone",
+      "version": "15.1.22",
+      "file": "build/Tone.js",
+      "bytes": 345500,
+      "sha256": "e290952fa43d9a7a780182a83c6fccf44d79cb7ae2cba102ef1f2b9d98124e22"
+    }
+  ],
+  "librariesTodo": [
+    "three r17x and later ship no .min builds on npm; the .min.js files jsdelivr generates on request are not recorded",
+    "cdnjs copies (most match npm byte for byte; cdnjs three.js r128 to r150 should be checked)",
+    "pixi.js 6.x and 5.x, phaser 3.70 and 3.80, three 0.150 to 0.170, howler 2.2.3, tone 14.7.x",
+    "multi-file esm builds (tone build/esm, three examples/jsm addons such as OrbitControls and GLTFLoader)",
+    "the DegenHive SDK (packages/sdk/dist/sdk.js) is matched at run time from the checked-out file"
+  ]
+}
