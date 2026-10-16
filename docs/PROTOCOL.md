@@ -136,7 +136,7 @@ type TrackName = "level_start" | "level_complete" | "level_fail" | "funnel_step"
 | `ready()` | Call it once, when the first screen can take input. It must come within 10 seconds of load. |
 | `runStart()` | Call it when a run begins. Use `seed` with `DegenHive.random(seed)` for any randomness that affects the score. |
 | `runEnd()` | Call it once per run. A whole number, `0 ≤ score ≤ scoring.maxScore`. A second call for the same run is refused. Calling `runEnd` twice is the most common bug in AI-written games. |
-| `save` | Up to 64 KB of text per player and game, kept by DegenHive. Use it instead of `localStorage` for anything that should follow the player across devices. |
+| `save` | Up to 60 KB of text per player and game, kept by DegenHive. Use it instead of `localStorage` for anything that should follow the player across devices. |
 | `track()` | Optional, for level funnels. Loads, sessions, heartbeats and errors are recorded with no call. |
 | `openLink()` | Asks the host to show the link in a confirm sheet. Resolves `true` when the player opens it. |
 | `random(seed)` | mulberry32. Same seed, same sequence, on every browser. |
@@ -164,7 +164,7 @@ The SDK and the host page talk over a `MessageChannel`. A game never sends these
 1. After the iframe loads, the host sends `{ dh: "hello", v: 1, origin: "<host origin>" }` to `iframe.contentWindow`, addressed to the game origin, and transfers `port2`.
 2. The SDK takes the message only if it comes from `window.parent` and its `origin` is on the SDK's built-in host list. It then replies on the port with `{ v: 1, type: "hello.ack", sdk: "<version>" }`.
 3. Everything after that goes over the port.
-4. With no `hello` within 1,500 ms, the SDK switches to local mode.
+4. With no `hello` within 1,500 ms after the window `load` event, the SDK switches to local mode. The SDK also requires `event.origin` to equal `data.origin`, and a page that is not in a frame goes straight to local mode. A `hello` that arrives after the switch is ignored.
 
 ### 5.2 Envelope
 
@@ -177,7 +177,7 @@ type Event    = { v: 1; type: string; payload?: object }
 
 | Limit | Value |
 |---|---|
-| Message size | at most 64 KB, except `run.end` with a log: 256 KB |
+| Message size | at most 64 KB, except `run.end` with a log: 256 KB. Size is the UTF-8 byte length of the JSON-serialised message, measured the same way by the SDK and the host. |
 | Rate | at most 20 messages a second |
 
 The host drops a message that breaks a limit or the schema. After 50 drops it closes the game.
@@ -188,8 +188,8 @@ The host drops a message that breaks a limit or the schema. After 50 drops it cl
 |---|---|---|---|
 | `ready` | event | `{}` | |
 | `session.get` | request | `{}` | `Session` |
-| `run.start` | request | `{}` | `{ runId, seed }` |
-| `run.end` | request | `{ runId, score, durationMs, log? }` | `RunResult` |
+| `run.start` | request | `{}` | `{ runId, seed }`, where `seed` is an unsigned 32-bit integer |
+| `run.end` | request | `{ runId, score, durationMs, log? }`, where `durationMs` is wall-clock time from the `run.start` reply to the `runEnd` call, pauses included | `RunResult` |
 | `save.get` | request | `{}` | `{ data: string \| null }` |
 | `save.set` | request | `{ data }` | `{}` |
 | `track` | event | `{ name, props? }` | |
