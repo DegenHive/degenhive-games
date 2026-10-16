@@ -1,0 +1,13 @@
+# Every game and everything that checks, reviews, serves or deploys games needs an approval from
+# the game reviewers.
+* @DegenHive/game-reviewers
+games/** @DegenHive/game-reviewers
+/schemas/ @DegenHive/game-reviewers
+/rules/ @DegenHive/game-reviewers
+/scripts/ @DegenHive/game-reviewers
+/edge/ @DegenHive/game-reviewers
+/tools/ @DegenHive/game-reviewers
+/.github/ @DegenHive/game-reviewers
+/docs/ @DegenHive/game-reviewers
+/package.json @DegenHive/game-reviewers
+/package-lock.json @DegenHive/game-reviewers

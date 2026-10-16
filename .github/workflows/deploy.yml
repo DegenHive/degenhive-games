@@ -1,0 +1,82 @@
+# Deploys merged games: uploads each changed games/<slug>/ build to R2, points KV live:<slug> at
+# it and tells the backend with a signed callback. Skips with a notice until the secrets exist.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "games/**"
+      - "packages/sdk/dist/sdk.js"
+  workflow_dispatch:
+    inputs:
+      game:
+        description: "Deploy one game again, as games/<slug>"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      GAMES_DEPLOY_SECRET: ${{ secrets.GAMES_DEPLOY_SECRET }}
+      GAMES_API_BASE: ${{ secrets.GAMES_API_BASE }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'dh-games' }}
+      KV_NAMESPACE_ID: ${{ vars.GAMES_KV_NAMESPACE_ID }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      BEFORE: ${{ github.event.before }}
+      AFTER: ${{ github.sha }}
+      GAME: ${{ inputs.game }}
+    steps:
+      - name: Check the deploy secrets
+        id: ready
+        run: |
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ACCOUNT_ID" ] || [ -z "$KV_NAMESPACE_ID" ]; then
+            echo "::notice::Deploy skipped: set the CF_API_TOKEN and CF_ACCOUNT_ID secrets and the GAMES_KV_NAMESPACE_ID variable."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            if [ -z "$GAMES_API_BASE" ] || [ -z "$GAMES_DEPLOY_SECRET" ]; then
+              echo "::warning::GAMES_API_BASE or GAMES_DEPLOY_SECRET is not set; the backend will not hear about deploys."
+            fi
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Upload the SDK
+        if: steps.ready.outputs.ok == 'true' && github.event_name == 'push'
+        run: |
+          if [ -z "$BEFORE" ] || [ -z "${BEFORE//0/}" ] || git diff --name-only "$BEFORE" "$AFTER" -- packages/sdk/dist/sdk.js | grep -q .; then
+            node scripts/deploy/deploy.mjs --sdk
+          fi
+
+      - name: Deploy games
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          if [ -n "$GAME" ]; then
+            node scripts/deploy/deploy.mjs --game "$GAME" --commit "$AFTER"
+          else
+            node scripts/deploy/deploy.mjs --before "$BEFORE" --after "$AFTER"
+          fi

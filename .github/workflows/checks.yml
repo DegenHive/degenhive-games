@@ -1,0 +1,113 @@
+# Checks for a game pull request. Runs the checks code from the base branch against the PR's
+# games/<slug>/ folder. No secrets and a read-only token: the game runs in a browser here.
+# The results go to the "checks" artifact; review.yml reads it, reviews and comments.
+name: checks
+
+on:
+  pull_request:
+    paths:
+      - "games/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      GITLEAKS_VERSION: "8.30.1"
+      GITLEAKS_SHA256: "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb"
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Check out the checks code (base branch)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          persist-credentials: false
+
+      - name: Check out the pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: base/package-lock.json
+
+      - name: Find the game
+        id: game
+        working-directory: pr
+        run: node ../base/scripts/checks/detect.mjs --base "$BASE_SHA"
+
+      - name: Install the checks dependencies
+        working-directory: base
+        run: npm ci --ignore-scripts
+
+      - name: Install Chromium
+        working-directory: base
+        run: npx playwright install --with-deps chromium
+
+      - name: Install gitleaks
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/gitleaks.tgz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+          sudo install "$RUNNER_TEMP/gitleaks" /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Install ClamAV
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq clamav
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam --quiet || echo "::warning::freshclam failed; scanning with the packaged signatures"
+
+      - name: Run the checks
+        id: run
+        working-directory: pr
+        env:
+          SLUG: ${{ steps.game.outputs.slug }}
+          ASSETS_URL: ${{ vars.GAMES_ASSETS_URL }}
+        run: |
+          set +e
+          args=(--game "games/$SLUG" --base "$BASE_SHA" --out ../out/checks.json --shots ../out/screenshots)
+          if [ -n "$ASSETS_URL" ]; then args+=(--assets-url "$ASSETS_URL"); fi
+          node ../base/scripts/checks/run.mjs "${args[@]}"
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Record the pull request
+        if: always()
+        run: |
+          mkdir -p out
+          printf '{"number": %d, "headSha": "%s", "baseSha": "%s"}\n' "$PR_NUMBER" "$HEAD_SHA" "$BASE_SHA" > out/pr.json
+
+      - name: Upload the results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checks
+          path: out/
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Fail when a check failed
+        if: steps.run.outputs.code != '0'
+        run: |
+          echo "::error::Some checks failed. See the table in the PR comment or out/checks.json."
+          exit 1
