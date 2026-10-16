@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "slug": "my-game",
+  "title": "My Game",
+  "pitch": "Catch the falling honey in 3D. Miss three drops and the run is over.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 10000, "maxPointsPerSecond": 6, "minRunSeconds": 5 },
+  "sim": "sim.js",
+  "backends": [],
+  "sdk": 1
+}

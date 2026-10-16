@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Hive Runner</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div id="hud" hidden>
+    <div id="score">0</div>
+    <div id="combo" hidden><b id="combo-text">x2</b><span id="combo-bar"></span></div>
+    <div id="meter" aria-label="Honey toward the next shield"></div>
+  </div>
+  <div id="badge" data-mode="local">Local test</div>
+  <div id="toast" hidden></div>
+
+  <section id="title" class="screen">
+    <h1>Hive Runner</h1>
+    <p>Dodge the wasps. Grab the honey.</p>
+    <p>Ten honey buys a shield.</p>
+    <p class="best">Best <b id="best-title">0</b></p>
+    <p class="cta">Tap or press Space to fly</p>
+    <p class="hint">Drag to steer, or use the arrow keys</p>
+  </section>
+
+  <section id="over" class="screen" hidden>
+    <h2>Stung</h2>
+    <p class="big" id="final">0</p>
+    <p class="best">Best <b id="best-over">0</b> <span id="new-best" hidden>New best</span></p>
+    <p class="stats" id="stats"></p>
+    <p class="note" id="note"></p>
+    <p class="cta">Tap or press Space to fly again</p>
+  </section>
+
+  <section id="paused" class="screen" hidden>
+    <h2>Paused</h2>
+  </section>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

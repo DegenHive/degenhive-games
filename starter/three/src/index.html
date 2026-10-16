@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>My Game</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div id="hud" hidden>
+    <span id="score">0</span>
+    <span id="lives"></span>
+  </div>
+  <div id="badge" data-mode="local">Local test</div>
+  <div id="toast" hidden></div>
+
+  <section id="title" class="screen">
+    <h1>My Game</h1>
+    <p>Catch the falling honey.</p>
+    <p class="best">Best <b id="best-title">0</b></p>
+    <p class="cta">Tap or press Space to start</p>
+    <p class="hint">Drag, or use the arrow keys</p>
+  </section>
+
+  <section id="over" class="screen" hidden>
+    <h2>Run over</h2>
+    <p class="big" id="final">0</p>
+    <p class="best">Best <b id="best-over">0</b> <span id="new-best" hidden>New best</span></p>
+    <p class="note" id="note"></p>
+    <p class="cta">Tap or press Space to play again</p>
+  </section>
+
+  <section id="paused" class="screen" hidden>
+    <h2>Paused</h2>
+  </section>
+
+  <script type="module" src="game.js"></script>
+</body>
+</html>

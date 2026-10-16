@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "slug": "hive-runner",
+  "title": "Hive Runner",
+  "pitch": "Dodge the wasps, grab the honey, beat your best.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade", "casual"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 100000, "maxPointsPerSecond": 150, "minRunSeconds": 5 },
+  "sim": "sim.js",
+  "backends": [],
+  "sdk": 1
+}

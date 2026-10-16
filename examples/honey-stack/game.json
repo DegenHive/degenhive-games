@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "slug": "honey-stack",
+  "title": "Honey Stack",
+  "pitch": "Drop the sliding slabs and build the tallest honey tower.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade", "casual"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 5000, "maxPointsPerSecond": 8, "minRunSeconds": 5 },
+  "sim": "sim.js",
+  "backends": [],
+  "sdk": 1
+}

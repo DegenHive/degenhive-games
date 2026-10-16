@@ -1,0 +1,31 @@
+# DegenHive Games
+
+> DegenHive Games is the repository of small browser games that run inside degenhive.ai. A game is one directory (game.json, src/, assets.json) that calls the DegenHive SDK (window.DegenHive) to report scored runs. This index lists what a person or an AI coding agent needs to build one.
+
+Games run in a sandboxed iframe on their own origin and never touch a wallet. A pull request changes exactly one games/<slug>/ directory. A scored game calls DegenHive.ready() once, DegenHive.runStart() at the start of every run and DegenHive.runEnd({ score }) exactly once per run, and keeps its scoring rules in a pure sim.js.
+
+## Start here
+
+- [Agent instructions](https://github.com/DegenHive/degenhive-games/blob/main/starter/AGENTS.md): the rules, the exact SDK calls, the sim.js split, common mistakes, how to test and submit. Read this first.
+- [Game protocol](https://github.com/DegenHive/degenhive-games/blob/main/docs/PROTOCOL.md): build rules, game.json fields, the SDK API and the messages between the game and the host page.
+- [Building a game](https://github.com/DegenHive/degenhive-games/blob/main/docs/BUILDING.md): the guide for people. Make, test, upload, review, go live, and how scoring works.
+- [Starter prompt](https://github.com/DegenHive/degenhive-games/blob/main/docs/PROMPT.md): a copy-paste prompt for Claude, ChatGPT or Cursor, and prompts for fixing problems.
+- [Review rubric](https://github.com/DegenHive/degenhive-games/blob/main/docs/REVIEW.md): what the review agent and the human reviewer look for.
+
+## Templates
+
+- [Canvas template](https://github.com/DegenHive/degenhive-games/blob/main/starter/canvas/src/game.js): a 2D game in the exact repo format. Also in the directory: game.json, assets.json, src/index.html, src/sim.js, src/style.css.
+- [three.js template](https://github.com/DegenHive/degenhive-games/blob/main/starter/three/src/game.js): the same game drawn with three.js. Also in the directory: game.json, assets.json, src/index.html, src/sim.js, src/style.css.
+
+## Examples
+
+- [Hive Runner, game.json](https://github.com/DegenHive/degenhive-games/blob/main/examples/hive-runner/game.json): a 2D endless dodger with touch and keyboard controls. See also [sim.js](https://github.com/DegenHive/degenhive-games/blob/main/examples/hive-runner/src/sim.js) and [game.js](https://github.com/DegenHive/degenhive-games/blob/main/examples/hive-runner/src/game.js).
+- [Honey Stack, game.json](https://github.com/DegenHive/degenhive-games/blob/main/examples/honey-stack/game.json): a three.js stacking game. See also [sim.js](https://github.com/DegenHive/degenhive-games/blob/main/examples/honey-stack/src/sim.js) and [game.js](https://github.com/DegenHive/degenhive-games/blob/main/examples/honey-stack/src/game.js).
+
+## Schemas
+
+- [game.json schema](https://github.com/DegenHive/degenhive-games/blob/main/schemas/game.schema.json): JSON Schema for game.json.
+
+## Optional
+
+- [All of the above in one file](https://github.com/DegenHive/degenhive-games/blob/main/docs/llms-full.txt): PROTOCOL.md, AGENTS.md and BUILDING.md concatenated.

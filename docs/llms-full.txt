@@ -1,0 +1,672 @@
+# DegenHive Games: full documentation
+
+> This file is generated from docs/PROTOCOL.md, starter/AGENTS.md and docs/BUILDING.md by joining them in that order. Do not edit it. Edit those files and join them again. The index is docs/llms.txt.
+
+---
+
+Source file: docs/PROTOCOL.md
+
+# Game protocol
+
+This page covers three things:
+- what a game build may contain;
+- the `game.json` file;
+- the SDK a game calls, and the messages between the game and the DegenHive page that hosts it.
+
+A game runs in a sandboxed iframe on its own origin, `https://<slug>.<game domain>/`. The page around it is degenhive.ai. The game never touches a wallet. Anything that involves money happens in the host page.
+
+## 1. Repository layout
+
+```
+games/<slug>/
+  game.json      metadata (section 3)
+  src/           the game's text files; the entry file is src/<entry>
+  assets.json    binary files kept outside git (section 2.3)
+```
+
+A pull request changes exactly one `games/<slug>/` directory.
+
+## 2. Build rules
+
+### 2.1 Limits
+
+| Rule | Limit |
+|---|---|
+| Entry file | `index.html` by default, at most 5 MB |
+| Whole build | at most 30 MB |
+| Files | at most 300 |
+| Paths | relative only, lower-case ASCII letters, digits, `-`, `_`, `.` and `/`, at most 200 characters, no `..` |
+
+### 2.2 File types
+
+- **Text, kept in `src/`:** `html htm js mjs css json glsl frag vert txt md csv`
+- **Binary, listed in `assets.json`:** `png jpg jpeg webp gif avif svg mp3 ogg wav m4a woff woff2 ttf otf glb gltf bin`
+- **`wasm`:** allowed only after a human approves it for that game.
+- **Anything else:** the build is refused.
+
+### 2.3 assets.json
+
+```json
+{ "assets": { "img/bee.png": { "sha256": "<hex>", "bytes": 1234, "type": "image/png" } } }
+```
+
+The bytes are stored by hash. A game uses the path, for example `<img src="img/bee.png">`, and the server serves the bytes for that path.
+
+### 2.4 Code rules
+
+The checks refuse a build whose own code (libraries matched by hash are not checked):
+- uses wallet APIs: `window.ethereum`, `window.solana`, `eth_` methods, `personal_sign`, `permit`, EIP-6963 events;
+- reaches the outer page: `window.parent` or `window.top` outside the SDK, `window.open`, `document.domain`;
+- opens a WebSocket or RTCPeerConnection, unless `backends` declares the origin;
+- runs `eval` or `new Function` on decoded or fetched strings;
+- holds miner code, or text that asks for a seed phrase, a private key or a wallet signature;
+- holds text addressed to an AI reviewer;
+- ships minified or obfuscated code of its own. Libraries are fine.
+
+### 2.5 Libraries
+
+Common libraries are swapped for pinned copies we host: three, phaser, pixi.js, howler, matter-js and tone. A game may also load them from cdnjs or jsdelivr, and the checks rewrite those URLs to our copies. No other code may load from outside the build at runtime.
+
+## 3. game.json
+
+```json
+{
+  "schema": 1,
+  "slug": "hive-runner",
+  "title": "Hive Runner",
+  "pitch": "Dodge the wasps, grab the honey, beat your best.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade"],
+  "controls": ["keyboard", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 1000000, "maxPointsPerSecond": 500, "minRunSeconds": 5 },
+  "sim": null,
+  "backends": [],
+  "sdk": 1
+}
+```
+
+| Field | Rule |
+|---|---|
+| `schema` | `1` |
+| `slug` | 3 to 32 characters: `a-z`, `0-9` and `-`. It starts with a letter, does not end with `-`, and has no `--` (preview hosts use `--`). Fixed after the first merge. Unique. |
+| `title` | 1 to 40 characters |
+| `pitch` | 1 to 120 characters |
+| `owner` | The owner's wallet address. Set by DegenHive and changed only by DegenHive. |
+| `entry` | A path inside `src/`, default `index.html` |
+| `tags` | 1 to 3 of: `arcade puzzle action strategy racing idle card word sports shooter platformer rhythm sim casual multiplayer` |
+| `controls` | 1 or more of: `mouse keyboard touch gamepad` |
+| `mobile` | `true` when the game works on a phone |
+| `orientation` | `landscape`, `portrait` or `any` |
+| `scored` | `true` when the game reports scores with `runEnd`. A Lab can only use a scored game. |
+| `scoring.mode` | `best` (a player's best run in a session counts) or `sum` (the session's runs add up) |
+| `scoring.maxScore` | The highest score one run can reach. 1 to 1,000,000. |
+| `scoring.maxPointsPerSecond` | The fastest a score can grow. Faster runs are flagged. |
+| `scoring.minRunSeconds` | Shorter runs do not count |
+| `sim` | `null`, or a path to a pure simulation file for replay checks. The SDK will check runs against it once replay checks ship. |
+| `backends` | `https://` origins the game connects to. Each one needs a human approval. |
+| `sdk` | `1` |
+
+## 4. The SDK
+
+The server adds the SDK to every HTML page of a build as `<script src="/__dh/sdk.js">`. It is the global `DegenHive`. A game written for local play can call the same API: with no host page around, the SDK runs in local mode.
+
+```ts
+DegenHive.version: string
+DegenHive.ready(): void
+DegenHive.session(): Promise<Session>
+DegenHive.runStart(): Promise<{ runId: string; seed: number }>
+DegenHive.runEnd(result: { score: number; log?: string }): Promise<RunResult>
+DegenHive.save.get(): Promise<string | null>
+DegenHive.save.set(data: string): Promise<void>
+DegenHive.track(name: TrackName, props?: Record<string, string | number | boolean>): void
+DegenHive.openLink(url: string): Promise<boolean>
+DegenHive.on(event: "pause" | "resume" | "mute" | "sessionChanged" | "sessionEnding", fn: (payload) => void): () => void
+DegenHive.random(seed: number): () => number
+
+type Session = {
+  mode: "practice" | "points" | "preview" | "local";
+  player: { name: string; avatar: string | null; signedIn: boolean };
+  lab: { id: string; name: string } | null;
+  muted: boolean;
+  locale: string;
+}
+type RunResult = { accepted: boolean; counted: boolean; best: number | null; reason?: string }
+type TrackName = "level_start" | "level_complete" | "level_fail" | "funnel_step"
+               | "gameplay_start" | "gameplay_stop" | "custom"
+```
+
+| Call | Rule |
+|---|---|
+| `ready()` | Call it once, when the first screen can take input. It must come within 10 seconds of load. |
+| `runStart()` | Call it when a run begins. Use `seed` with `DegenHive.random(seed)` for any randomness that affects the score. |
+| `runEnd()` | Call it once per run. A whole number, `0 ≤ score ≤ scoring.maxScore`. A second call for the same run is refused. Calling `runEnd` twice is the most common bug in AI-written games. |
+| `save` | Up to 60 KB of text per player and game, kept by DegenHive. Use it instead of `localStorage` for anything that should follow the player across devices. |
+| `track()` | Optional, for level funnels. Loads, sessions, heartbeats and errors are recorded with no call. |
+| `openLink()` | Asks the host to show the link in a confirm sheet. Resolves `true` when the player opens it. |
+| `random(seed)` | mulberry32. Same seed, same sequence, on every browser. |
+
+**Mode** says what a run is worth:
+- `points`: the player holds a pass, and the run counts for the Lab.
+- `practice`: the run does not count.
+- `preview`: a review or preview build.
+- `local`: no host page.
+
+The game should show the mode, so a player always knows if points are on.
+
+**Local mode:**
+- `session()` returns `mode: "local"`.
+- `runStart()` returns a random seed.
+- `runEnd()` logs the result and resolves `{ accepted: true, counted: false, best }`.
+- `save` uses `localStorage`.
+
+## 5. Messages between the game and the host
+
+The SDK and the host page talk over a `MessageChannel`. A game never sends these messages itself; the SDK does.
+
+### 5.1 Handshake
+
+1. After the iframe loads, the host sends `{ dh: "hello", v: 1, origin: "<host origin>" }` to `iframe.contentWindow`, addressed to the game origin, and transfers `port2`.
+2. The SDK takes the message only if it comes from `window.parent` and its `origin` is on the SDK's built-in host list. It then replies on the port with `{ v: 1, type: "hello.ack", sdk: "<version>" }`.
+3. Everything after that goes over the port.
+4. With no `hello` within 1,500 ms after the window `load` event, the SDK switches to local mode. The SDK also requires `event.origin` to equal `data.origin`, and a page that is not in a frame goes straight to local mode. A `hello` that arrives after the switch is ignored.
+
+### 5.2 Envelope
+
+```ts
+type Request  = { v: 1; id: string; type: string; payload?: object }
+type Response = { v: 1; re: string; ok: true; payload?: object }
+              | { v: 1; re: string; ok: false; error: { code: string; message: string } }
+type Event    = { v: 1; type: string; payload?: object }
+```
+
+| Limit | Value |
+|---|---|
+| Message size | at most 64 KB, except `run.end` with a log: 256 KB. Size is the UTF-8 byte length of the JSON-serialised message, measured the same way by the SDK and the host. |
+| Rate | at most 20 messages a second |
+
+The host drops a message that breaks a limit or the schema. After 50 drops it closes the game.
+
+### 5.3 Game to host
+
+| Type | Kind | Payload | Reply |
+|---|---|---|---|
+| `ready` | event | `{}` | |
+| `session.get` | request | `{}` | `Session` |
+| `run.start` | request | `{}` | `{ runId, seed }`, where `seed` is an unsigned 32-bit integer |
+| `run.end` | request | `{ runId, score, durationMs, log? }`, where `durationMs` is wall-clock time from the `run.start` reply to the `runEnd` call, pauses included | `RunResult` |
+| `save.get` | request | `{}` | `{ data: string \| null }` |
+| `save.set` | request | `{ data }` | `{}` |
+| `track` | event | `{ name, props? }` | |
+| `link.open` | request | `{ url }` | `{ opened: boolean }` |
+| `heartbeat` | event | `{ visible: boolean, fps?: number }` | (sent by the SDK every 30 s) |
+| `error` | event | `{ message, source?, line? }` | (sent by the SDK on `window.onerror` and unhandled rejections) |
+
+### 5.4 Host to game
+
+| Type | Payload |
+|---|---|
+| `pause` | `{}` (the host opened a sheet, or the tab is hidden) |
+| `resume` | `{}` |
+| `mute` | `{ muted: boolean }` |
+| `session.changed` | `Session` (for example, the player bought a pass and points are now on) |
+| `session.ending` | `{ secondsLeft: number }` (the Lab session closes soon) |
+
+### 5.5 Errors
+
+| `code` | Meaning |
+|---|---|
+| `bad_request` | The payload does not match the schema |
+| `rate_limited` | Too many messages |
+| `run_unknown` | No such run, or it has already ended |
+| `run_rejected` | The run broke a scoring rule. `message` says which. |
+| `too_large` | The payload is over its limit |
+| `unavailable` | The host or server could not answer. Try again later. |
+
+## 6. Where a game is served
+
+| Kind | Address |
+|---|---|
+| Live | `https://<slug>.<game domain>/`. The address never changes; each merged build replaces what is behind it. |
+| Pull request preview | `https://pr-<number>--<slug>.<preview domain>/` |
+| Upload preview | `https://up-<id>--<slug>.<preview domain>/`, valid for 24 hours |
+| Local development | `http://<slug>.localhost:8790/`, served by `tools/edge-dev` |
+
+Every response carries:
+- a Content-Security-Policy:
+  - `default-src 'self'`;
+  - `script-src 'self' 'unsafe-inline' blob:`;
+  - `connect-src 'self'` plus the declared backends;
+  - `img-src`, `media-src` and `font-src`: `'self' data: blob:`;
+  - `worker-src 'self' blob:`;
+  - `frame-src 'none'`, `form-action 'none'`, `base-uri 'none'`, `object-src 'none'`;
+  - `frame-ancestors` set to the DegenHive origins;
+- a Permissions-Policy that turns off camera, microphone, location, payment, USB, serial, HID, Bluetooth, clipboard reading and publickey-credentials.
+
+The server refuses service-worker scripts.
+
+---
+
+Source file: starter/AGENTS.md
+
+# Building a DegenHive game: agent instructions
+
+You are building one browser game for DegenHive. The game runs in a sandboxed iframe on degenhive.ai. It talks to the page around it only through the `DegenHive` SDK global. Follow this file exactly. The contract is `docs/PROTOCOL.md`; if this file and the protocol disagree, the protocol wins.
+
+## 1. Start from a template
+
+Copy one template into `games/<slug>/` and edit it. Do not start from an empty folder.
+
+| Template | Use it for |
+|---|---|
+| `starter/canvas/` | 2D games drawn on a `<canvas>` |
+| `starter/three/` | 3D games with three.js |
+
+```
+cp -R starter/canvas games/<slug>
+```
+
+Pick the slug first: 3 to 32 characters, `a-z`, `0-9` and `-`. It starts with a letter, does not end with `-` and has no `--`. It cannot change after the first merge. Set `"slug"` in `game.json` to the same value as the directory name.
+
+Every template is already correct. Change the game, not the structure. Two finished games show the same structure at full size: `examples/hive-runner` (canvas) and `examples/honey-stack` (three.js).
+
+## 2. Hard rules
+
+A build that breaks one of these is refused by the checks.
+
+- [ ] The game is one directory: `game.json`, `assets.json`, `src/`. Nothing else at the top level.
+- [ ] Text files live in `src/`. Allowed text types: `html htm js mjs css json glsl frag vert txt md csv`.
+- [ ] Binary files (`png jpg jpeg webp gif avif svg mp3 ogg wav m4a woff woff2 ttf otf glb gltf bin`) are listed in `assets.json` and are not committed. If you need none, `assets.json` is `{ "assets": {} }`. Prefer drawing with canvas or three.js primitives and synthesizing sound with WebAudio. That needs no assets at all.
+- [ ] `wasm` needs a human approval. Do not use it.
+- [ ] Limits: entry file at most 5 MB, whole build at most 30 MB, at most 300 files.
+- [ ] Paths are relative, lower-case ASCII letters, digits, `-`, `_`, `.` and `/`, at most 200 characters, no `..`.
+- [ ] No wallet code. Never use `window.ethereum`, `window.solana`, `eth_` methods, `personal_sign`, `permit`, EIP-6963 events, or any wallet or blockchain library. Never ask the player for wallet secrets, approvals or signatures.
+- [ ] Never touch the outer page: no `window.parent`, `window.top`, `window.opener`, `window.open`, `document.domain`. To open a link use `DegenHive.openLink(url)`.
+- [ ] No WebSocket, WebTransport, EventSource or RTCPeerConnection unless the origin is listed in `backends` in `game.json`. Each backend needs a human approval.
+- [ ] No `eval` or `new Function` on decoded or fetched strings.
+- [ ] No fetches or script loads from outside the build. The only exception is a library from jsDelivr, cdnjs or unpkg: `three`, `phaser`, `pixi.js`, `howler`, `matter-js`, `tone`. Use an exact version in the URL, for example `https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js`. The checks swap it for a pinned copy.
+- [ ] Your own code is readable. Do not minify or obfuscate it. Do not bundle it into one long line.
+- [ ] No notes to reviewers or checkers in code, comments or strings. Comments describe the code and nothing else.
+- [ ] Put CSS in a `.css` file in `src/`. Do not use inline `<style>` blocks or `style="..."` attributes: the content policy in PROTOCOL.md section 6 lists no style rule. Setting styles from JavaScript (`element.style.transform = ...`) is fine.
+- [ ] The server adds `<script src="/__dh/sdk.js">` to every HTML page. Do not add it yourself and do not copy the SDK into the game.
+- [ ] No service workers (refused). No camera, microphone, location, clipboard reading, USB, Bluetooth.
+
+## 3. game.json
+
+```json
+{
+  "schema": 1,
+  "slug": "my-game",
+  "title": "My Game",
+  "pitch": "One sentence, at most 120 characters.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 10000, "maxPointsPerSecond": 6, "minRunSeconds": 5 },
+  "sim": "sim.js",
+  "backends": [],
+  "sdk": 1
+}
+```
+
+- Leave `owner` as it is. DegenHive sets it.
+- `title` is 1 to 40 characters. `pitch` is 1 to 120 characters.
+- `tags`: 1 to 3 of `arcade puzzle action strategy racing idle card word sports shooter platformer rhythm sim casual multiplayer`.
+- `controls`: what the game really supports, from `mouse keyboard touch gamepad`.
+- `mobile: true` means the game is fully playable on a phone with touch only. Only set it when that is true.
+- `orientation`: `landscape`, `portrait` or `any`. Prefer `any` and make the layout fit.
+- `scored: true` when the game calls `runEnd`. A Lab can only use a scored game. Then `scoring` is required.
+- `scoring.mode`: `best` (the player's best run in a session counts) or `sum` (the runs add up).
+- `scoring.maxScore`: the highest score one run can reach, 1 to 1,000,000. It must match the cap in `sim.js`.
+- `scoring.maxPointsPerSecond`: the fastest the score can grow. The checks compare each run's score divided by its length in seconds with this value, and flag runs above it. Set it well above the best honest rate you measure, including short runs and bursts. Measure with a bot or a short script that plays `sim.js` (the starters were measured this way). A game that only scores at the end of a long run still needs a value: use the best honest score divided by its run length, with a margin.
+- `scoring.minRunSeconds`: a floor, not a target. A run shorter than this does not count for points, but it must still end normally with `runEnd`. Set it to about the shortest run a real player can finish; use 5 when unsure.
+- `sim`: `"sim.js"` for scored games built with the template. Use `null` if the game has no pure simulation.
+- `backends`: leave `[]`.
+
+## 4. The SDK
+
+`window.DegenHive` exists when your script runs. With no host page around, it runs in local mode and everything below still works.
+
+```ts
+DegenHive.ready(): void
+DegenHive.session(): Promise<Session>
+DegenHive.runStart(): Promise<{ runId: string; seed: number }>
+DegenHive.runEnd(result: { score: number; log?: string }): Promise<RunResult>
+DegenHive.save.get(): Promise<string | null>
+DegenHive.save.set(data: string): Promise<void>
+DegenHive.track(name, props?): void
+DegenHive.openLink(url: string): Promise<boolean>
+DegenHive.on("pause" | "resume" | "mute" | "sessionChanged" | "sessionEnding", fn): () => void
+DegenHive.random(seed: number): () => number
+
+type Session = { mode: "practice" | "points" | "preview" | "local"; player: { name: string; avatar: string | null; signedIn: boolean }; lab: { id: string; name: string } | null; muted: boolean; locale: string }
+type RunResult = { accepted: boolean; counted: boolean; best: number | null; reason?: string }
+```
+
+Do these, in this order:
+
+1. **Boot.** Attach all event handlers. `await DegenHive.session()` inside `try/catch`. Show the first screen (title, a Play button). Then call `DegenHive.ready()` once. It must come within 10 seconds of load.
+2. **Mode badge.** Show the session mode on screen: `practice` as "Practice", `points` as "Points on", `preview` as "Preview", `local` as "Local test". Update it on `sessionChanged`; the event payload is the new `Session`.
+3. **Run start.** When the player starts a run call `const { seed } = await DegenHive.runStart()`; `seed` is an unsigned 32-bit integer. Create the simulation from that seed: `sim.init(seed, DegenHive.random(seed))`. All randomness that affects the score comes from this generator. Visual-only randomness (particles, shake) may use `Math.random`.
+4. **Run end.** When the run is over call `DegenHive.runEnd({ score })` once. `score` is a whole number from 0 to `scoring.maxScore`. Leave `log` out; its format is not defined yet. Guard it with a flag that is reset in the run start function. Wrap it in `try/catch`; a rejected promise has a `.code` such as `run_rejected`.
+5. **Best score.** Keep it with `DegenHive.save.set(JSON.stringify({ best }))` and read it with `DegenHive.save.get()` at boot. Up to 60 KB of text. Call `save.set` only when something changed, never every frame.
+6. **Pause.** On `pause` stop the simulation and stop timers; show a paused screen. On `resume` continue and do not simulate the time that passed.
+7. **Mute.** `session.muted` is the initial state; the `mute` event gives `{ muted }`. Respect it for all sound. Create the `AudioContext` on the first player gesture.
+8. **If `runStart` fails**, let the player play an unscored run and do not call `runEnd` for it.
+
+Rate limit: the host accepts 20 SDK messages a second. `track`, `save.set`, `runStart` and `runEnd` all count. Never call them in a frame loop.
+
+## 5. Split the rules out: sim.js
+
+A scored game keeps everything that decides the score in `src/sim.js` as plain functions. `game.js` handles screens, input, sound and drawing.
+
+```js
+export function init(seed, random = mulberry32(seed)) { /* returns state */ }
+export function step(state, input, dt) { /* advances the state */ }
+export function score(state) { /* whole number, 0..MAX_SCORE */ }
+export function isOver(state) { /* true when the run is finished */ }
+```
+
+`mulberry32` is defined in the template's `sim.js`. It is the same generator as `DegenHive.random`. `game.js` passes `DegenHive.random(seed)` as the second argument, and the default lets the file run on its own.
+
+Rules for `sim.js`:
+
+- [ ] No DOM, no `window`, no `DegenHive` calls, no imports other than your own pure modules.
+- [ ] No `Math.random`, `Date`, `performance.now`, `crypto`. Use the generator in `state.rand`.
+- [ ] No `Math.sin`, `cos`, `tan`, `pow`, `exp`, `log`, `hypot`: engines round them differently. `+ - * /`, `sqrt`, `abs`, `min`, `max`, `floor` are safe. Use a triangle wave for oscillation.
+- [ ] Same seed, same inputs and same step sizes give the same score in every browser.
+- [ ] `game.js` calls `step` with a fixed `dt` (`1/60`) from an accumulator loop. Never pass the raw frame time.
+- [ ] `score(state)` clamps to the maximum, and the maximum equals `scoring.maxScore` in `game.json`.
+- [ ] Anything that happens in the sim and needs a sound or a particle is pushed to `state.events`; `game.js` reads and empties it.
+- [ ] `input` is plain data: for example `{ dir, target }` or `{ drop }`. Convert pointer positions to world units in `game.js`.
+
+Replay checks are not live yet. When they ship, they will run `sim.js` against recorded input to verify scores, so keep the file pure now.
+
+## 6. Layout and controls
+
+- [ ] Size the canvas from the container, not from constants. Use a `ResizeObserver` on the canvas, multiply by `devicePixelRatio` (cap it at 2), and redo the layout on every resize. The iframe can be any size, in portrait or landscape.
+- [ ] Keep a fixed logical play field and fit it into the container (letterbox), or lay out from the aspect ratio. Test a tall phone size and a wide desktop size.
+- [ ] When `mobile` is `true`, every action works by touch alone. Use pointer events (`pointerdown`, `pointermove`, `pointerup`); they cover mouse, touch and pen. Put the listeners on `window`. Set `touch-action: none` in CSS. Never rely on hover, right click or a keyboard key.
+- [ ] Keyboard: arrows and WASD for movement, Space or Enter for the main action. Call `preventDefault` on keys the game uses. Call `window.focus()` on the first `pointerdown`; a game iframe starts without keyboard focus.
+- [ ] Add `viewport-fit=cover` and respect `env(safe-area-inset-*)` for HUD placement.
+- [ ] Respect `prefers-reduced-motion`: no screen shake, fewer animations.
+- [ ] Every screen has one obvious way to continue (tap or Space). Ignore stray input for about half a second after a game over screen appears.
+
+## 7. Common mistakes
+
+Check for each of these before you finish.
+
+1. **`runEnd` called twice.** The most common bug. A death handler fires on every frame, or both a timer and a collision end the run. Use a `ended` flag per run and reset it only in the run start function.
+2. **`ready()` never called**, or called before the first screen can take input, or only after a long asset load. Call it once, as soon as the title screen works.
+3. **`Math.random` in scoring.** Spawn positions, drops, enemy choices and any other value that changes the outcome must come from `DegenHive.random(seed)`.
+4. **`localStorage` for the best score.** Use `DegenHive.save`. `localStorage` does not follow the player across devices.
+5. **Fixed canvas size.** `canvas.width = 800` with no resize handling. The iframe is not 800 wide.
+6. **Mouse-only controls with `mobile: true`.** Hover, click on small targets, keyboard-only actions.
+7. **Frame-rate-dependent logic.** Moving by a fixed amount per frame, or passing the raw `dt` into `step`. Use a fixed-step accumulator.
+8. **A score that is not an integer**, is negative, or is over `maxScore`. `runEnd` rejects it.
+9. **No mode badge.** The player must see whether points are on.
+10. **Sound before a gesture.** Browsers block it. Create the `AudioContext` in a pointer or key handler.
+11. **Ignoring `pause`.** The game keeps running behind a host sheet.
+12. **Inline CSS** (`<style>`, `style=""`). Move it to a `.css` file.
+13. **Calling `track` or `save.set` every frame.** Messages over the rate limit are queued or dropped, which delays real calls such as `runEnd`. A host that has to drop many messages closes the game.
+14. **A library loaded without an exact version**, or from a host other than jsDelivr, cdnjs or unpkg.
+15. **Minified or bundled output** committed as the game. Commit the readable source.
+
+## 8. Test locally
+
+Run these from the root of the `degenhive-games` repository. Run `npm install` once first. The checks use Playwright; if it has no browser yet, run `npx playwright install chromium`.
+
+**1. Run the checks.** They are the same checks a submission gets, including a headless run of your game.
+
+```
+node scripts/checks/run.mjs --game games/<slug> --no-fail --shots shots
+```
+
+It prints one line per check. It loads the game in a desktop and a phone viewport for about a minute (`--seconds 20` for a shorter run), plays it, and reports: `ready()` timing, runs started and ended, scores, script errors, blocked requests and frame rate. Every line must be `pass`. `WARN` lines about missing `gitleaks` or `clamscan` are fine. `--shots <dir>` saves screenshots; look at them, because they are what the reviewer sees.
+
+**2. Play it.** Put the build into a temporary storage root and serve it:
+
+```
+node scripts/deploy/deploy.mjs --game games/<slug> --local <dir>
+node tools/edge-dev/server.mjs --root <dir>
+```
+
+`<dir>` is any empty folder outside the repository. Run the first command again after every change. The server uses the same routing, content policy and SDK injection as degenhive.ai and swaps library URLs for pinned copies. Open `http://<slug>.localhost:8790/` to play.
+
+For a test with a host page, open `http://localhost:8790/__host?slug=<slug>&log=1`. The page frames the game, answers the SDK like degenhive.ai does and lists every message in a side panel: `ready`, `run.start`, `run.end`, saves and errors. Add `&mode=practice`, `&mode=points` or `&mode=preview` to change the session mode.
+
+Opening `index.html` from disk, or serving `src/` with a plain static server, does not work: the SDK is added by the server, so `DegenHive` would be undefined.
+
+**3. What to check by hand.**
+
+1. The browser console has no errors or warnings from your code.
+2. `ready` appears once in the host log, within a second or two of loading.
+3. Play two full runs. Each run shows one `run.start` and one `run.end`. Never two `run.end` lines for the same run.
+4. Hide the tab and show it again. The game pauses and continues. (With no host page, the SDK sends `pause` and `resume` when the tab is hidden and shown.)
+5. Resize to a phone size (390 x 844) and a wide size (1280 x 720). Nothing is cut off or unreachable.
+6. The best score is still there after a reload.
+
+An upload preview at https://degenhive.ai/create is a third way to test: it runs the build on the real server and is valid for 24 hours.
+
+## 9. Submit
+
+- Upload the game directory as a zip on https://degenhive.ai/create.
+- `npx degenhive deploy` will do the same from the command line. It is coming soon; do not use it yet.
+- Or open a pull request that changes exactly one `games/<slug>/` directory.
+
+The checks run first. Then review agents and a person look at it. A refused build comes with a message and a fix prompt; apply the fix and submit again.
+
+## 10. Before you say you are done
+
+- [ ] `game.json` is valid and the slug equals the directory name.
+- [ ] `DegenHive.ready()` is called once.
+- [ ] `runStart()` is called at the start of every run and its seed feeds `sim.init`.
+- [ ] `runEnd({ score })` is called exactly once per run, with a whole number in range.
+- [ ] `sim.js` has no `Math.random`, `Date`, `performance.now` or trig.
+- [ ] The best score uses `DegenHive.save`.
+- [ ] The mode badge shows Practice, Points on, Preview or Local test.
+- [ ] Pause and mute work.
+- [ ] The layout fits a phone and a desktop window. Touch works if `mobile` is `true`.
+- [ ] No wallet APIs, no outer page access, no external requests, no minified code.
+- [ ] The console is clean.
+
+---
+
+Source file: docs/BUILDING.md
+
+# Building a game for DegenHive
+
+This guide is for the person who makes the game. You can write it yourself or have an AI write it. The technical contract is [PROTOCOL.md](PROTOCOL.md).
+
+A game goes through five steps:
+
+1. Make it.
+2. Test it on your computer.
+3. Upload it.
+4. It is reviewed: checks, then an agent, then a person.
+5. It goes live at `https://<slug>.<game domain>/`.
+
+## 1. Make it
+
+A game is one directory:
+
+```
+my-game/
+  game.json     name, controls, scoring
+  src/          the game's text files (HTML, CSS, JavaScript)
+  assets.json   images and sounds, if any
+```
+
+Pick one way to start.
+
+**With an AI.** Open [PROMPT.md](PROMPT.md), copy the prompt, fill in your idea and paste it into Claude, ChatGPT or Cursor. Save the files it gives you. If your tool can read this repository, point it at `starter/AGENTS.md` instead.
+
+**From a template.** Copy `starter/canvas` (2D) or `starter/three` (3D) and change it. Two finished games are in `examples/`: `hive-runner` (2D) and `honey-stack` (3D). Read them to see how the SDK is used.
+
+The three things every game must do:
+
+- Call `DegenHive.ready()` once, when the first screen can take input.
+- Call `DegenHive.runStart()` when a run begins and `DegenHive.runEnd({ score })` once when it ends.
+- Keep the best score with `DegenHive.save`, not `localStorage`.
+
+Rules about what a build may contain:
+
+- Text files in `src/`: `html htm js mjs css json glsl frag vert txt md csv`.
+- Images, sounds, fonts and models are listed in `assets.json`. You do not need any: draw with canvas or three.js and make sounds with WebAudio.
+- At most 30 MB in all, 300 files, 5 MB for the entry file.
+- No wallet code, no reaching the page around the game, no outside requests. Libraries (three, phaser, pixi.js, howler, matter-js, tone) can be loaded from jsDelivr or cdnjs with an exact version.
+- Your own code must be readable. Minified or obfuscated code is refused.
+- Put CSS in a `.css` file, not in inline `<style>` blocks or `style` attributes.
+
+## 2. Test it
+
+Work from a clone of this repository. Run `npm install` once. The checks use Playwright; if it has no browser yet, run `npx playwright install chromium`.
+
+**Run the checks.** They are the same checks a submission gets, including a headless run of your game:
+
+```
+node scripts/checks/run.mjs --game games/<slug> --no-fail --shots shots
+```
+
+It prints one line per check. It loads the game in a desktop and a phone viewport, plays it, and reports when `ready()` was called, how many runs started and ended, script errors and blocked requests. Every line must say `pass`. Warnings about `gitleaks` or `clamscan` are fine. The screenshots in `shots/` are what the reviewer sees.
+
+**Play it yourself.** Put the build into a temporary folder and serve it:
+
+```
+node scripts/deploy/deploy.mjs --game games/<slug> --local <dir>
+node tools/edge-dev/server.mjs --root <dir>
+```
+
+`<dir>` is any empty folder outside the repository. Run the first command again after every change. Then open `http://<slug>.localhost:8790/`. To play inside a test host page that answers the SDK like degenhive.ai and lists every message the game sends, open `http://localhost:8790/__host?slug=<slug>&log=1`.
+
+Opening `index.html` from disk does not work, because the SDK is added by the server.
+
+**Upload preview.** You can also zip the game directory and upload it at https://degenhive.ai/create. You get a preview link at once. It runs on the real server and is valid for 24 hours. Nothing goes to review until you submit it.
+
+Check these by hand:
+
+- The console has no errors.
+- The title screen works within a second or two of loading, and `ready` shows once in the host log.
+- Play two full runs. Each run shows one `run.start` and one `run.end`.
+- Hide the tab and show it again. The game pauses and continues.
+- Make the window phone-sized (390 x 844) and then wide (1280 x 720). Nothing is cut off. If `mobile` is `true` in `game.json`, everything works with touch only.
+- The mode badge shows on screen.
+- The best score is still there after a reload.
+
+## 3. Upload it
+
+Pick one way. Each ends in a pull request that changes exactly one `games/<slug>/` directory.
+
+- **Upload on the site.** Zip the game directory and upload it at https://degenhive.ai/create. You get a preview link that works for 24 hours (`https://up-<id>--<slug>.<preview domain>/`). When it works, submit it. That opens a pull request for you.
+- **Open the pull request yourself.** Put the directory at `games/<slug>/` and open a pull request. It gets a preview link too (`https://pr-<number>--<slug>.<preview domain>/`).
+- **Command line.** `npx degenhive deploy` is coming soon. It will do the same as the upload.
+
+Your slug is the name of the game's address. It has 3 to 32 characters (`a-z`, `0-9`, `-`), starts with a letter, does not end with `-` and has no `--`. It cannot change after the first merge. It must be unique.
+
+## 4. Review
+
+Three things look at every pull request, in order.
+
+1. **Checks.** A program reads every file and plays the game in a headless browser, on a desktop and a phone screen. It refuses a build that has wallet code, reaches the outer page, opens sockets that are not declared, uses `eval` on fetched text, is minified, holds miner code or asks for wallet secrets or signatures. It also validates `game.json`, the limits and the file types. A refusal comes with a message and a short fix prompt you can paste into your AI.
+2. **A review agent.** It reads the code, `game.json`, the checks report and the screenshots from the checks run. It never runs the game. Its verdict is advice.
+3. **A person.** Reads the report and merges, or asks for changes.
+
+What reviewers look for:
+
+- The game loads and `ready()` is called.
+- A full run works and `runEnd` is called once per run, with a whole number between 0 and `maxScore`.
+- Controls match `game.json`. A game with `mobile: true` is playable on a phone.
+- The scoring numbers fit the game: the best real run is under `maxScore`, and `maxPointsPerSecond` is above the best honest rate.
+- Scored games take their randomness from the run seed, and `sim.js` is pure.
+- No hidden branches: no special cases for an owner, a date, a key sequence, a URL parameter or a player name.
+- The mode badge is shown. The game does not compute or claim rewards.
+- No wallet prompts, fake "claim" or "connect" screens, or titles and screens that mislead about money.
+- No outside requests. `backends` and `wasm` are used only when a person approved them.
+- You have the right to use everything in the game (code, art, sound, names).
+- The content is suitable for a general audience.
+
+The rubric is in [REVIEW.md](REVIEW.md).
+
+## 5. Live
+
+When the pull request is merged, the game is live at `https://<slug>.<game domain>/`. The address never changes.
+
+To update a live game, make the change and open a new pull request on the same directory. Each merged build replaces what is behind the address. The slug stays the same; the owner is set by DegenHive.
+
+## How scoring works
+
+A game that sets `scored: true` reports every run with `DegenHive.runEnd({ score })`. What a run is worth depends on the session mode, which `DegenHive.session()` returns and the game shows as a badge:
+
+| Mode | Badge | What it means |
+|---|---|---|
+| `points` | Points on | The player holds a pass and the run counts for the Lab. |
+| `practice` | Practice | The run does not count. |
+| `preview` | Preview | A review or preview build. |
+| `local` | Local test | No DegenHive page around the game. |
+
+A Lab can only use a scored game.
+
+`scoring` in `game.json` sets the rules:
+
+| Field | Meaning |
+|---|---|
+| `mode: "best"` | A player's best run in a session counts. |
+| `mode: "sum"` | The runs in a session add up. |
+| `maxScore` | The highest score one run can reach, 1 to 1,000,000. A higher score is refused. |
+| `maxPointsPerSecond` | The fastest the score can grow. The checks compare a run's score divided by its length in seconds with this value and flag runs above it. |
+| `minRunSeconds` | A floor. A run shorter than this does not count for points. |
+
+Scores are whole numbers. The run length is measured from the `runStart` reply to the `runEnd` call, so pauses count.
+
+How to pick the numbers:
+
+- `maxScore`: the highest score a perfect player could reach in a run, rounded up. If a run can go on without end, make the game cap the score at this value.
+- `maxPointsPerSecond`: play with a bot or a script that runs `sim.js`, find the best honest score per second, short runs included, and set the value well above it.
+- `minRunSeconds`: about the shortest run a real player can finish. Use 5 if you are unsure. Short runs must still end with `runEnd`.
+
+Randomness that changes the outcome comes from the seed `runStart` returns, through `DegenHive.random(seed)`. This keeps runs fair and lets DegenHive check them later. Keep the rules in `sim.js` without `Math.random`, `Date` or `performance.now`.
+
+## game.json at a glance
+
+```json
+{
+  "schema": 1,
+  "slug": "hive-runner",
+  "title": "Hive Runner",
+  "pitch": "Dodge the wasps, grab the honey, beat your best.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade", "casual"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 100000, "maxPointsPerSecond": 150, "minRunSeconds": 5 },
+  "sim": "sim.js",
+  "backends": [],
+  "sdk": 1
+}
+```
+
+`owner` is set by DegenHive; leave it as it is. The full field list is in [PROTOCOL.md](PROTOCOL.md).
+
+## Common refusals
+
+| Message | Fix |
+|---|---|
+| Uses an Ethereum or Solana wallet | Remove all wallet code. Use `DegenHive.session()` for the player's name. |
+| Reaches the page around the game | Remove `window.parent`, `window.top`, `window.open`. Use `DegenHive.openLink(url)`. |
+| Minified code | Commit the readable source, not the bundle. |
+| Loads a script from outside the build | Use one of the listed libraries, from jsDelivr or cdnjs, with an exact version. |
+| `ready()` was not called | Call `DegenHive.ready()` once, when the title screen works. |
+| `runEnd` rejected | Call it once per run, with a whole number from 0 to `maxScore`. |
+
+When a check refuses your game, paste its message into your AI together with the fix prompt, as shown in [PROMPT.md](PROMPT.md).
+
