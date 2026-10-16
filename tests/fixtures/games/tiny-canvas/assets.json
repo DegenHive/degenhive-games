@@ -1,0 +1,9 @@
+{
+  "assets": {
+    "img/dot.png": {
+      "sha256": "55eb55ed5a727557eec7dac7767df5558bae9aa10f85fc8d9912c83fd2739b71",
+      "bytes": 76,
+      "type": "image/png"
+    }
+  }
+}

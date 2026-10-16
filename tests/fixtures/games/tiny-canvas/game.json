@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "slug": "tiny-canvas",
+  "title": "Tiny Canvas",
+  "pitch": "Catch the falling dots. A test fixture for the checks.",
+  "owner": "0x0000000000000000000000000000000000000000",
+  "entry": "index.html",
+  "tags": ["arcade"],
+  "controls": ["keyboard", "mouse", "touch"],
+  "mobile": true,
+  "orientation": "any",
+  "scored": true,
+  "scoring": { "mode": "best", "maxScore": 10000, "maxPointsPerSecond": 50, "minRunSeconds": 1 },
+  "sim": null,
+  "backends": [],
+  "sdk": 1
+}
