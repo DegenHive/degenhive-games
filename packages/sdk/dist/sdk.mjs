@@ -19,9 +19,11 @@ var HOSTS = ["https://degenhive.ai", "https://www.degenhive.ai", "http://localho
 var DEV_HOST = /^http:\/\/localhost:\d{1,5}$/;
 var HELLO_WAIT = 1500;
 var REQUEST_TIMEOUT = 1e4;
+var LINK_TIMEOUT = 6e5;
 var HEARTBEAT = 3e4;
 var READY_WAIT = 1e4;
 var MAX_MSG = 64 * 1024;
+var MAX_SAVE = 60 * 1024;
 var MAX_RUN_END = 256 * 1024;
 var MAX_SCORE = 1e6;
 var MAX_ERRORS = 20;
@@ -109,8 +111,8 @@ function createSDK() {
         rej: o.rej,
         t: setTimeout(() => {
           const p = take(id);
-          if (p) p.rej(fail("unavailable", "no answer from the host in 10 s"));
-        }, REQUEST_TIMEOUT)
+          if (p) p.rej(fail("unavailable", "the host did not answer in time"));
+        }, o.ms)
       };
     }
     try {
@@ -167,13 +169,13 @@ function createSDK() {
     if (bad) warn(type + " was dropped: " + bad.message);
     else enqueue({ msg, kind: type });
   }
-  function ask(type, payload, local) {
+  function ask(type, payload, local, ms = REQUEST_TIMEOUT) {
     return new Promise((res, rej) => {
       const msg = { v: 1, id: String(++seq), type, payload };
       const bad = check(msg);
       if (bad) return rej(bad);
       if (mode === 2) return res(local());
-      enqueue({ msg, kind: "", res, rej, local });
+      enqueue({ msg, kind: "", res, rej, local, ms });
     });
   }
   function emit(name, payload) {
@@ -215,7 +217,7 @@ function createSDK() {
   function toLocal() {
     mode = 2;
     clearTimeout(helloTimer);
-    console.info("[DegenHive] no host page: local mode, runs are not scored");
+    console.info("[DegenHive] local mode: no host page");
     for (const o of outbox.splice(0)) {
       if (o.res && o.rej && o.local) {
         try {
@@ -369,6 +371,7 @@ function createSDK() {
       },
       set(data) {
         if (typeof data !== "string") return no("bad_request", "save.set needs a string");
+        if (new TextEncoder().encode(data).length > MAX_SAVE) return no("too_large", "a save is at most 60 KB");
         return ask("save.set", { data }, () => {
           lset("dh:save", data);
           return {};
@@ -405,7 +408,7 @@ function createSDK() {
         } catch {
           return { opened: false };
         }
-      }).then((r) => !!r.opened);
+      }, LINK_TIMEOUT).then((r) => !!r.opened);
     },
     on(event, fn) {
       if (LISTEN.indexOf(event) < 0) throw new TypeError('DegenHive.on: unknown event "' + String(event) + '"');

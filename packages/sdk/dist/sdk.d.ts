@@ -71,7 +71,7 @@ export interface DegenHiveApi {
   /** Call once per run. `score` is a whole number, 0 to 1,000,000. */
   runEnd(result: { score: number; log?: string }): Promise<RunResult>;
   readonly save: {
-    /** Up to 64 KB of text per player and game. */
+    /** Up to 60 KB of text per player and game. */
     get(): Promise<string | null>;
     set(data: string): Promise<void>;
   };

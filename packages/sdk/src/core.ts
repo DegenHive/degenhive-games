@@ -8,9 +8,12 @@ const HOSTS = ["https://degenhive.ai", "https://www.degenhive.ai", "http://local
 const DEV_HOST = /^http:\/\/localhost:\d{1,5}$/; // only when the game itself runs on *.localhost
 const HELLO_WAIT = 1500;
 const REQUEST_TIMEOUT = 10000;
+// link.open waits for a person to answer a confirm sheet in the host, so it gets far longer.
+const LINK_TIMEOUT = 600000;
 const HEARTBEAT = 30000;
 const READY_WAIT = 10000;
 const MAX_MSG = 64 * 1024;
+const MAX_SAVE = 60 * 1024;
 const MAX_RUN_END = 256 * 1024;
 const MAX_SCORE = 1000000;
 const MAX_ERRORS = 20;
@@ -44,6 +47,7 @@ interface Msg {
 interface Out {
   msg: Msg;
   kind: string; // event type, "" for a request
+  ms?: number; // how long a request may wait for its answer
   res?: (value: any) => void;
   rej?: (error: Error) => void;
   local?: () => any; // answers a request when there is no host
@@ -135,8 +139,8 @@ export function createSDK(): DegenHiveApi {
         rej: o.rej as (e: Error) => void,
         t: setTimeout(() => {
           const p = take(id);
-          if (p) p.rej(fail("unavailable", "no answer from the host in 10 s"));
-        }, REQUEST_TIMEOUT),
+          if (p) p.rej(fail("unavailable", "the host did not answer in time"));
+        }, o.ms),
       };
     }
     try {
@@ -200,13 +204,13 @@ export function createSDK(): DegenHiveApi {
   }
 
   /** Request to the host. In local mode `local` answers it. */
-  function ask<T>(type: string, payload: object, local: () => any): Promise<T> {
+  function ask<T>(type: string, payload: object, local: () => any, ms = REQUEST_TIMEOUT): Promise<T> {
     return new Promise((res, rej) => {
       const msg: Msg = { v: 1, id: String(++seq), type, payload };
       const bad = check(msg);
       if (bad) return rej(bad);
       if (mode === 2) return res(local());
-      enqueue({ msg, kind: "", res, rej, local });
+      enqueue({ msg, kind: "", res, rej, local, ms });
     });
   }
 
@@ -254,7 +258,7 @@ export function createSDK(): DegenHiveApi {
   function toLocal(): void {
     mode = 2;
     clearTimeout(helloTimer);
-    console.info("[DegenHive] no host page: local mode, runs are not scored");
+    console.info("[DegenHive] local mode: no host page");
     for (const o of outbox.splice(0)) {
       if (o.res && o.rej && o.local) {
         try {
@@ -431,6 +435,7 @@ export function createSDK(): DegenHiveApi {
       },
       set(data: string) {
         if (typeof data !== "string") return no("bad_request", "save.set needs a string");
+        if (new TextEncoder().encode(data).length > MAX_SAVE) return no("too_large", "a save is at most 60 KB");
         return ask<object>("save.set", { data }, () => {
           lset("dh:save", data);
           return {};
@@ -470,7 +475,7 @@ export function createSDK(): DegenHiveApi {
         } catch {
           return { opened: false };
         }
-      }).then((r) => !!r.opened);
+      }, LINK_TIMEOUT).then((r) => !!r.opened);
     },
 
     on(event, fn) {

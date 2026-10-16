@@ -21,7 +21,7 @@ Bundler users can import it instead: `import DegenHive from "@degenhive/game-sdk
 | `session()` | `Promise<Session>` | `mode` is `practice`, `points`, `preview` or `local`. Show it to the player. |
 | `runStart()` | `Promise<{ runId, seed }>` | When a run begins. Feed `seed` to `random()`. |
 | `runEnd({ score, log? })` | `Promise<RunResult>` | Once per run. `score` is a whole number, 0 to 1,000,000. |
-| `save.get()` / `save.set(text)` | `Promise<string \| null>` / `Promise<void>` | Text only, just under 64 KB per player and game. |
+| `save.get()` / `save.set(text)` | `Promise<string \| null>` / `Promise<void>` | Text only, up to 60 KB per player and game. |
 | `track(name, props?)` | `void` | `level_start`, `level_complete`, `level_fail`, `funnel_step`, `gameplay_start`, `gameplay_stop`, `custom`. Props are strings, numbers or booleans. |
 | `openLink(url)` | `Promise<boolean>` | Host confirm sheet. `true` when the player opens it. `http` and `https` only. |
 | `on(event, fn)` | `() => void` | `pause`, `resume`, `mute` (`{ muted }`), `sessionChanged` (a `Session`), `sessionEnding` (`{ secondsLeft }`). Returns the unsubscribe function. |
@@ -35,7 +35,7 @@ Loads, sessions, heartbeats (every 30 s while the tab is visible) and uncaught e
 
 - A second `runEnd` for the same run is refused with `run_unknown` and a console warning, without sending anything. This is the most common bug in AI-written games.
 - A bad `score`, `log` or URL is refused with `bad_request`; an over-size message with `too_large`. Nothing goes to the host.
-- A request the host does not answer in 10 s rejects with `unavailable`. A `runEnd` that failed this way can be called again.
+- A request the host does not answer in 10 s rejects with `unavailable`. A `runEnd` that failed this way can be called again. `openLink` waits up to 10 minutes, because a person has to answer the confirm sheet.
 - At most 20 messages a second leave the game. When the queue overflows, `track` events are dropped first.
 - Calls made before the page has said hello wait and go out afterwards.
 

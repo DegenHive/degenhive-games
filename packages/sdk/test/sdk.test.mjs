@@ -230,6 +230,7 @@ describe("local mode", () => {
     await env.sdk.save.set('{"lvl":3}');
     assert.equal(env.storage.get("dh:save"), '{"lvl":3}');
     assert.equal(await env.sdk.save.get(), '{"lvl":3}');
+    await assert.rejects(env.sdk.save.set("x".repeat(60 * 1024 + 1)), { code: "too_large" }); // same limit as with a host
   });
 
   test("save falls back to memory when localStorage throws", async (t) => {
@@ -469,13 +470,55 @@ describe("requests", () => {
     await assert.rejects(sdk.save.set("x".repeat(70000)), { code: "too_large" });
     await assert.rejects(sdk.save.set("€".repeat(30000)), { code: "too_large" }); // 90,000 bytes
     await assert.rejects(sdk.save.set("x".repeat(65536)), { code: "too_large" }); // the envelope makes it just over
-    await sdk.save.set("x".repeat(65000));
+    await assert.rejects(sdk.save.set("x".repeat(60 * 1024 + 1)), { code: "too_large" }); // a save is at most 60 KB
+    await sdk.save.set("x".repeat(60 * 1024));
     await sdk.runStart();
     await assert.rejects(sdk.runEnd({ score: 1, log: "x".repeat(300 * 1024) }), { code: "too_large" });
     await sdk.runEnd({ score: 1, log: "x".repeat(200 * 1024) }); // a log gets 256 KB
     assert.equal(host.ofType("save.set").length, 1);
     assert.equal(host.ofType("run.end").length, 1);
     assert.equal(host.ofType("run.end")[0].payload.log.length, 200 * 1024);
+  });
+
+  test("link.open waits for a person: no 10 s timeout, 10 minutes at most", async (t) => {
+    const { env, host, sdk } = await connected({ handlers: null });
+    cleanup(t, env);
+    let result;
+    const settle = (p) =>
+      p.then(
+        (v) => (result = v),
+        (e) => (result = e.code),
+      );
+
+    // The player takes a minute to answer the confirm sheet.
+    const a = settle(sdk.openLink("https://example.org"));
+    await until(() => host.ofType("link.open").length === 1, "link.open");
+    env.clock.advance(10000);
+    env.clock.advance(50000);
+    await quiet();
+    assert.equal(result, undefined, "still waiting after 60 s");
+    host.reply(host.ofType("link.open")[0].id, { opened: true });
+    await a;
+    assert.equal(result, true);
+
+    // Nobody answers: it gives up at 10 minutes.
+    result = undefined;
+    const b = settle(sdk.openLink("https://example.org/two"));
+    await until(() => host.ofType("link.open").length === 2, "second link.open");
+    env.clock.advance(599999);
+    await quiet();
+    assert.equal(result, undefined, "not yet at 9 min 59.999 s");
+    env.clock.advance(1);
+    await b;
+    assert.equal(result, "unavailable");
+
+    // Everything else still times out at 10 s.
+    result = undefined;
+    const c = settle(sdk.save.get());
+    await until(() => host.ofType("save.get").length === 1, "save.get");
+    env.clock.advance(10000);
+    await c;
+    assert.equal(result, "unavailable");
   });
 
   test("bad arguments reject with bad_request", async (t) => {
