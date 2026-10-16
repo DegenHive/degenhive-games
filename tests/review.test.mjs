@@ -180,4 +180,5 @@ test("labels and commit status", () => {
   assert.equal(commitStatus({ verdict: "approve" }).state, "success");
   assert.equal(commitStatus({ verdict: "changes" }).state, "failure");
   assert.equal(commitStatus({ verdict: "flag" }).state, "failure");
+  assert.equal(commitStatus({ verdict: "flag", summary: "Agent review not configured", issues: [] }), null);
 });

@@ -252,6 +252,7 @@ if (isMain) {
   })();
   const pr = a.pr !== undefined ? Number(a.pr) : await findPr({ commit, cwd });
 
+  for (const g of games) if (!/^games\/[a-z0-9-]+\/?$/.test(g)) die(`--game must look like games/<slug>: ${g}`);
   let failed = 0;
   for (const g of games) {
     const dir = resolve(cwd, g);

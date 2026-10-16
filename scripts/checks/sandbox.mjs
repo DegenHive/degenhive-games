@@ -24,7 +24,11 @@ const READY_LIMIT_MS = 10000;
 const DESKTOP_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "Enter", "KeyW", "KeyA", "KeyS", "KeyD", "KeyZ", "KeyX", "KeyJ", "KeyK", "ShiftLeft"];
 
 // Messages the browser prints about our own headers, not about the game.
-const BROWSER_NOISE = [/Permissions-Policy header: Unrecognized feature/i, /Error with Permissions-Policy header/i];
+const BROWSER_NOISE = [
+  /Permissions-Policy header: Unrecognized feature/i,
+  /Error with Permissions-Policy header/i,
+  /both allow-scripts and allow-same-origin for its sandbox attribute/i, // the test host's own iframe
+];
 
 function mulberry32(seed) {
   let s = seed | 0;
@@ -457,7 +461,7 @@ export async function runSandbox({
 
 // ---- CheckItems ----
 
-const fmtMs = (ms) => (ms === null || ms === undefined ? "never" : `${(ms / 1000).toFixed(1)} s`);
+const fmtMs = (ms) => (ms === null || ms === undefined ? "never" : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`);
 
 function cspKey(v) {
   return `${v.directive}|${v.blocked}`;
@@ -559,7 +563,9 @@ export function sandboxItems(result, game, { backends = [] } = {}) {
     const unique = [];
     const seen = new Set();
     for (const e of errs) {
-      const k = e.message;
+      const k = String(e.message || "").trim();
+      // Content-policy messages are reported by the "Content policy" check.
+      if (!k || /Content Security Policy/i.test(k)) continue;
       if (seen.has(k)) continue;
       seen.add(k);
       unique.push(e);

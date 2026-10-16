@@ -113,8 +113,10 @@ export function desiredLabels(checks, verdict) {
   return out.filter(Boolean);
 }
 
+/** The degenhive/agent-review status, or null when the review did not run (no API key yet). */
 export function commitStatus(verdict) {
-  const v = verdict && verdict.verdict;
+  if (!verdict || verdict.summary === "Agent review not configured") return null;
+  const v = verdict.verdict;
   if (v === "approve") return { state: "success", description: "Agent review: approve" };
   if (v === "changes") return { state: "failure", description: "Agent review: changes requested" };
   return { state: "failure", description: "Agent review: flagged for a human" };
