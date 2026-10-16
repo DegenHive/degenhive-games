@@ -191,3 +191,23 @@ test("the fixture game is clean", () => {
   assert.deepEqual(scan.minified, []);
   assert.deepEqual(scan.external, []);
 });
+
+// ---- sim module ----
+
+import { simProblems, stripComments } from "../scripts/checks/lib/sim.mjs";
+
+test("sim modules: pure ES modules with the four exports", () => {
+  const good = `// no Math.random or Date here\nimport { mulberry32 } from "./rng.js";\nexport function init(seed) { return { r: mulberry32(seed), t: 0 }; }\nexport function step(s, input, dt) { s.t += dt; return s; }\nexport const score = (s) => Math.floor(s.t);\nexport function isOver(s) { return s.t > 60; }\n`;
+  assert.deepEqual(simProblems(good), []);
+  const bad = `export function init(seed) { return { x: Math.random(), at: Date.now() }; }\nexport function step(s) { document.title = "x"; return s; }\n`;
+  const p = simProblems(bad);
+  assert.ok(p.some((x) => x.startsWith("uses Math.random (line 1)")));
+  assert.ok(p.some((x) => x.startsWith("uses Date")));
+  assert.ok(p.some((x) => x.startsWith("uses the browser")));
+  assert.ok(p.some((x) => x === "does not export score, isOver"));
+  assert.ok(simProblems(`import x from "https://esm.sh/x";\nexport { init, step, score, isOver };`).some((x) => x.includes("not relative")));
+});
+
+test("stripComments keeps strings and line numbers", () => {
+  assert.equal(stripComments('a // x\nb /* y\nz */ c "//not" \'/*no*/\''), "a \nb \n c \"//not\" '/*no*/'");
+});

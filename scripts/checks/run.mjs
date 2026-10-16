@@ -17,6 +17,7 @@ import { SLUG_RE } from "../lib/protocol.mjs";
 import { scopeCheck } from "./lib/scope.mjs";
 import { layoutItem, schemaItem, limitsItem, typesItem } from "./lib/limits.mjs";
 import { assetsCheck } from "./lib/assets.mjs";
+import { simItem } from "./lib/sim.mjs";
 import { loadRules, scanBuild, rulesItems } from "./lib/rules.mjs";
 import { secretsItem, malwareItem } from "./lib/tools.mjs";
 import { runSandbox, sandboxItems } from "./sandbox.mjs";
@@ -54,6 +55,7 @@ export async function runChecks(o) {
 
   items.push(layoutItem(game));
   items.push(schemaItem(game, { kind: scope.kind, baseGame: scope.baseGame }));
+  items.push(simItem(game));
   items.push(limitsItem(game));
   const types = typesItem(game);
   items.push(types.item);

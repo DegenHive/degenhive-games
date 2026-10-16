@@ -517,14 +517,17 @@ export function sandboxItems(result, game, { backends = [] } = {}) {
     const max = g.scoring && Number.isInteger(g.scoring.maxScore) ? g.scoring.maxScore : 1000000;
     const badScores = ends.flatMap((r) => r.scores).filter((s) => !(Number.isInteger(s) && s >= 0 && s <= max));
     const bridgeDoubles = vps.flatMap((v) => (v.bridge ? v.bridge.runs.filter((r) => r.ends > 1) : []));
+    // PROTOCOL.md 3: runs faster than score / (durationMs / 1000) > maxPointsPerSecond are refused.
+    // Runs shorter than minRunSeconds do not count anyway, so they are not judged.
     const fast = [];
+    const bridgeRuns = vps.flatMap((v) => (v.bridge ? v.bridge.runs : []));
     if (g.scoring && g.scoring.maxPointsPerSecond > 0) {
-      for (const v of vps) {
-        for (const r of v.bridge ? v.bridge.runs : []) {
-          if (r.score !== null && r.durationMs > 0 && r.score / (r.durationMs / 1000) > g.scoring.maxPointsPerSecond) fast.push(r);
-        }
+      const minMs = (Number(g.scoring.minRunSeconds) || 0) * 1000;
+      for (const r of bridgeRuns) {
+        if (r.score !== null && r.durationMs > 0 && r.durationMs >= minMs && r.score / (r.durationMs / 1000) > g.scoring.maxPointsPerSecond) fast.push(r);
       }
     }
+    const withLog = bridgeRuns.filter((r) => r.log);
     const summary = vps.map((v) => `${v.viewport}: ${v.calls.runStart} started, ${v.runs.filter((r) => r.ends > 0).length} ended`).join("; ");
     let status = "pass";
     let detail = summary + ".";
@@ -538,12 +541,18 @@ export function sandboxItems(result, game, { backends = [] } = {}) {
       status = "fail";
       detail += ` Invalid scores: ${badScores.slice(0, 5).join(", ")} (must be whole numbers from 0 to ${max}).`;
       fixPrompt = `Pass a whole number from 0 to ${max} to DegenHive.runEnd({ score }). Round the score with Math.floor and clamp it to scoring.maxScore from game.json.`;
+    } else if (fast.length) {
+      status = "fail";
+      const worst = Math.max(...fast.map((r) => Math.round(r.score / (r.durationMs / 1000))));
+      detail += ` ${fast.length} run(s) scored up to ${worst} points a second, over scoring.maxPointsPerSecond (${g.scoring.maxPointsPerSecond}); the server refuses such runs.`;
+      fixPrompt = `Runs of this game score up to ${worst} points per second, but game.json sets scoring.maxPointsPerSecond to ${g.scoring.maxPointsPerSecond}, so the server would refuse them. Either raise scoring.maxPointsPerSecond to the real top rate with some headroom, or slow down how fast the score grows.`;
     } else if (g.scored && ends.length === 0) {
       status = "warn";
       detail += " No run ended during the random-input run. A human should check that runs start and end.";
-    } else if (fast.length) {
+    } else if (withLog.length) {
       status = "warn";
-      detail += ` ${fast.length} run(s) scored faster than scoring.maxPointsPerSecond (${g.scoring.maxPointsPerSecond}).`;
+      detail += " runEnd sends a log, which is reserved for replay checks.";
+      fixPrompt = "Call DegenHive.runEnd({ score }) without a log; the log field is reserved for replay checks.";
     } else if (!g.scored && ends.length) {
       detail += " The game is not scored but reports runs.";
     }

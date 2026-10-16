@@ -102,7 +102,6 @@ export function contentSecurityPolicy(env, { backends = [], wasm = false } = {})
   const d = [
     "default-src 'self'",
     `script-src ${script.join(" ")}`,
-    // Not in PROTOCOL.md section 6 yet: without it every inline <style> and style="" is blocked.
     "style-src 'self' 'unsafe-inline'",
     `connect-src ${connect.join(" ")}`,
     "img-src 'self' data: blob:",
