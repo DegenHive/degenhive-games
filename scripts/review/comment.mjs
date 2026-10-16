@@ -99,7 +99,53 @@ export function renderComment(checks, verdict, { runUrl = null } = {}) {
   if (runUrl && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/actions\/runs\/\d+$/.test(runUrl)) {
     lines.push(`Screenshots and \`checks.json\` are in the [checks run artifacts](${runUrl}).`, "");
   }
+  lines.push(VERDICT_MARKER, "<details><summary>Machine-readable result</summary>", "", fence(safeJson(machineResult(c, v)), "json", 60000), "", "</details>");
   return lines.join("\n");
+}
+
+/** JSON with <, > and @ escaped, so the block renders nothing and pings no one; JSON.parse restores them. */
+export function safeJson(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/@/g, "\\u0040").replace(/\//g, "\\/").replace(/\|/g, "\\u007c");
+}
+
+/** Marks the one JSON block the DegenHive backend reads from this comment. */
+export const VERDICT_MARKER = "<!-- degenhive-verdict -->";
+
+const str = (x, max) => (typeof x === "string" ? x.slice(0, max) : undefined);
+
+/** The checks and verdict the backend mirrors to degenhive.ai, with only known fields. */
+export function machineResult(checks, verdict) {
+  const items = checks && Array.isArray(checks.items) ? checks.items.slice(0, 60) : [];
+  const issues = verdict && Array.isArray(verdict.issues) ? verdict.issues.slice(0, 30) : [];
+  return {
+    schema: 1,
+    checks: checks
+      ? {
+          status: checks.status === "fail" ? "fail" : "pass",
+          items: items.map((i) => ({
+            key: str(i.key, 60),
+            label: str(i.label, 120),
+            status: ["pass", "warn", "fail", "pending", "running"].includes(i.status) ? i.status : "fail",
+            detail: str(i.detail, 1000),
+            fixPrompt: str(i.fixPrompt, 4000),
+          })),
+        }
+      : null,
+    verdict: verdict
+      ? {
+          verdict: ["approve", "changes", "flag"].includes(verdict.verdict) ? verdict.verdict : "flag",
+          summary: str(verdict.summary, 2000) ?? "",
+          issues: issues.map((i) => ({
+            lens: ["security", "content", "scoring", "quality"].includes(i.lens) ? i.lens : "quality",
+            severity: ["info", "minor", "major", "blocker"].includes(i.severity) ? i.severity : "major",
+            file: str(i.file, 200),
+            line: Number.isInteger(i.line) && i.line > 0 ? i.line : undefined,
+            plain: str(i.plain, 1000) ?? "",
+            fixPrompt: str(i.fixPrompt, 4000),
+          })),
+        }
+      : null,
+  };
 }
 
 export function desiredLabels(checks, verdict) {

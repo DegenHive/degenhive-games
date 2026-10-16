@@ -182,3 +182,21 @@ test("labels and commit status", () => {
   assert.equal(commitStatus({ verdict: "flag" }).state, "failure");
   assert.equal(commitStatus({ verdict: "flag", summary: "Agent review not configured", issues: [] }), null);
 });
+
+test("comment: carries one marked machine-readable block the backend can parse", async () => {
+  const { renderComment, VERDICT_MARKER } = await import("../scripts/review/comment.mjs");
+  const c = renderComment(
+    { slug: "x", status: "pass", items: [{ key: "a", label: "A <b>", status: "warn", fixPrompt: "do @this" }] },
+    { verdict: "changes", summary: "fix <it>", issues: [{ lens: "security", severity: "major", plain: "bad", file: "src/a.js", line: 3 }] },
+  );
+  const at = c.indexOf(VERDICT_MARKER);
+  assert.ok(at > 0 && c.indexOf(VERDICT_MARKER, at + 1) === -1);
+  const block = c.slice(at).match(/```json\n([\s\S]*?)\n```/);
+  assert.ok(block);
+  const parsed = JSON.parse(block[1]);
+  assert.equal(parsed.schema, 1);
+  assert.equal(parsed.verdict.verdict, "changes");
+  assert.equal(parsed.verdict.summary, "fix <it>");
+  assert.equal(parsed.checks.items[0].fixPrompt, "do @this");
+  assert.equal(parsed.verdict.issues[0].line, 3);
+});
