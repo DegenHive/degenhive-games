@@ -27,7 +27,7 @@ A pull request changes exactly one `games/<slug>/` directory.
 | Entry file | `index.html` by default, at most 5 MB |
 | Whole build | at most 30 MB |
 | Files | at most 300 |
-| Paths | relative only, lower-case ASCII letters, digits, `-`, `_`, `.` and `/`, at most 200 characters, no `..` |
+| Paths | relative only, lower-case ASCII letters, digits, `-`, `_`, `.` and `/`, at most 200 characters, no `..`. The `__dh/` path is reserved for DegenHive. |
 
 ### 2.2 File types
 
@@ -57,7 +57,7 @@ The checks refuse a build whose own code (libraries matched by hash are not chec
 
 ### 2.5 Libraries
 
-Common libraries are swapped for pinned copies we host: three, phaser, pixi.js, howler, matter-js and tone. A game may also load them from cdnjs or jsdelivr, and the checks rewrite those URLs to our copies. No other code may load from outside the build at runtime.
+Common libraries are swapped for pinned copies we host: three, phaser, pixi.js, howler, matter-js and tone. A game may load a pinned version of one of them from jsdelivr or unpkg, and the server rewrites those URLs to our copies when it serves the game. No other code may load from outside the build at runtime.
 
 ## 3. game.json
 
@@ -235,6 +235,7 @@ Every response carries:
   - `connect-src 'self'` plus the declared backends;
   - `img-src`, `media-src` and `font-src`: `'self' data: blob:`;
   - `worker-src 'self' blob:`;
+  - `'wasm-unsafe-eval'` added to `script-src` only for a game whose wasm a human approved;
   - `frame-src 'none'`, `form-action 'none'`, `base-uri 'none'`, `object-src 'none'`;
   - `frame-ancestors` set to the DegenHive origins;
 - a Permissions-Policy that turns off camera, microphone, location, payment, USB, serial, HID, Bluetooth, clipboard reading and publickey-credentials.
