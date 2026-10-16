@@ -96,9 +96,9 @@ Common libraries are swapped for pinned copies we host: three, phaser, pixi.js, 
 | `scored` | `true` when the game reports scores with `runEnd`. A Lab can only use a scored game. |
 | `scoring.mode` | `best` (a player's best run in a session counts) or `sum` (the session's runs add up) |
 | `scoring.maxScore` | The highest score one run can reach. 1 to 1,000,000. |
-| `scoring.maxPointsPerSecond` | The fastest a score can grow. Faster runs are flagged. |
+| `scoring.maxPointsPerSecond` | The highest `score / (durationMs / 1000)` a run may have. Faster runs are refused. |
 | `scoring.minRunSeconds` | Shorter runs do not count |
-| `sim` | `null`, or a path to a pure simulation file for replay checks. The SDK will check runs against it once replay checks ship. |
+| `sim` | `null`, or a path inside `src/` (for example `sim.js`) to the game's pure simulation: an ES module that exports `init(seed)`, `step(state, input, dt)`, `score(state)` and `isOver(state)`, with no `Math.random`, `Date` or `performance.now`. Replay checks will use it; until then reviewers read it. |
 | `backends` | `https://` origins the game connects to. Each one needs a human approval. |
 | `sdk` | `1` |
 
@@ -135,7 +135,7 @@ type TrackName = "level_start" | "level_complete" | "level_fail" | "funnel_step"
 |---|---|
 | `ready()` | Call it once, when the first screen can take input. It must come within 10 seconds of load. |
 | `runStart()` | Call it when a run begins. Use `seed` with `DegenHive.random(seed)` for any randomness that affects the score. |
-| `runEnd()` | Call it once per run. A whole number, `0 ≤ score ≤ scoring.maxScore`. A second call for the same run is refused. Calling `runEnd` twice is the most common bug in AI-written games. |
+| `runEnd()` | `log` is reserved for replay checks; leave it out for now. Call it once per run. A whole number, `0 ≤ score ≤ scoring.maxScore`. A second call for the same run is refused. Calling `runEnd` twice is the most common bug in AI-written games. |
 | `save` | Up to 60 KB of text per player and game, kept by DegenHive. Use it instead of `localStorage` for anything that should follow the player across devices. |
 | `track()` | Optional, for level funnels. Loads, sessions, heartbeats and errors are recorded with no call. |
 | `openLink()` | Asks the host to show the link in a confirm sheet. Resolves `true` when the player opens it. |
@@ -231,6 +231,7 @@ Every response carries:
 - a Content-Security-Policy:
   - `default-src 'self'`;
   - `script-src 'self' 'unsafe-inline' blob:`;
+  - `style-src 'self' 'unsafe-inline'`;
   - `connect-src 'self'` plus the declared backends;
   - `img-src`, `media-src` and `font-src`: `'self' data: blob:`;
   - `worker-src 'self' blob:`;
