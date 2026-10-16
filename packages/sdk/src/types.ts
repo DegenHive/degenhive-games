@@ -1,0 +1,82 @@
+// Public types of the DegenHive game SDK. This file has no imports: the build
+// copies it verbatim into dist/sdk.d.ts.
+
+/** What a run is worth. `local` means no host page is around the game. */
+export type SessionMode = "practice" | "points" | "preview" | "local";
+
+export interface Session {
+  mode: SessionMode;
+  player: { name: string; avatar: string | null; signedIn: boolean };
+  lab: { id: string; name: string } | null;
+  muted: boolean;
+  locale: string;
+}
+
+export interface RunStart {
+  runId: string;
+  seed: number;
+}
+
+export interface RunResult {
+  accepted: boolean;
+  counted: boolean;
+  best: number | null;
+  reason?: string;
+}
+
+export type TrackName =
+  | "level_start"
+  | "level_complete"
+  | "level_fail"
+  | "funnel_step"
+  | "gameplay_start"
+  | "gameplay_stop"
+  | "custom";
+
+export type TrackProps = Record<string, string | number | boolean>;
+
+export type ErrorCode =
+  | "bad_request"
+  | "rate_limited"
+  | "run_unknown"
+  | "run_rejected"
+  | "too_large"
+  | "unavailable";
+
+/** Every rejected SDK promise carries one of the codes above. */
+export interface DegenHiveError extends Error {
+  code: ErrorCode;
+}
+
+export interface EventPayloads {
+  pause: Record<string, never>;
+  resume: Record<string, never>;
+  mute: { muted: boolean };
+  sessionChanged: Session;
+  sessionEnding: { secondsLeft: number };
+}
+
+export type DegenHiveEvent = keyof EventPayloads;
+
+export interface DegenHiveApi {
+  readonly version: string;
+  /** Call once, when the first screen can take input. */
+  ready(): void;
+  session(): Promise<Session>;
+  /** Call when a run begins. Feed `seed` to `random()` for anything that affects the score. */
+  runStart(): Promise<RunStart>;
+  /** Call once per run. `score` is a whole number, 0 to 1,000,000. */
+  runEnd(result: { score: number; log?: string }): Promise<RunResult>;
+  readonly save: {
+    /** Up to 64 KB of text per player and game. */
+    get(): Promise<string | null>;
+    set(data: string): Promise<void>;
+  };
+  track(name: TrackName, props?: TrackProps): void;
+  /** Asks the host to show the link in a confirm sheet. Resolves true when the player opens it. */
+  openLink(url: string): Promise<boolean>;
+  /** Returns a function that removes the listener. */
+  on<E extends DegenHiveEvent>(event: E, fn: (payload: EventPayloads[E]) => void): () => void;
+  /** mulberry32: the same seed gives the same floats in [0, 1) in every browser. */
+  random(seed: number): () => number;
+}

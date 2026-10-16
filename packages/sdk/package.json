@@ -1,0 +1,28 @@
+{
+  "name": "@degenhive/game-sdk",
+  "version": "1.0.0",
+  "description": "Browser SDK for DegenHive games. The edge server injects it as /__dh/sdk.js.",
+  "license": "MIT",
+  "type": "module",
+  "module": "./dist/sdk.mjs",
+  "types": "./dist/sdk.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.mjs",
+      "default": "./dist/sdk.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run build && npm run typecheck && node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
+  }
+}
