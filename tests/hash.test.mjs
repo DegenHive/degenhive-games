@@ -22,6 +22,16 @@ test("build hash input is <path>\\t<sha256>\\n per file, sorted by path", () => 
   assert.equal(buildHash(files), h(buildHashInput(files)));
 });
 
+test("build hash test vector shared with the backend", () => {
+  // index.html = "hello\n", js/game.js = "game\n", img/bee.png = "png\n" (paths relative to src/)
+  const files = [
+    { path: "index.html", sha256: h("hello\n") },
+    { path: "js/game.js", sha256: h("game\n") },
+    { path: "img/bee.png", sha256: h("png\n") },
+  ];
+  assert.equal(buildHash(files), "1ec6d249df061e45e8cfa27c2a03009a33a7fcb89ef4540e6ee8d456cf4aa85a");
+});
+
 test("build hash does not depend on input order", () => {
   const files = [
     { path: "x.js", sha256: h("1") },
